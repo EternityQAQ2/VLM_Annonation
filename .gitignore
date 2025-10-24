@@ -39,6 +39,9 @@ data/images/*
 data/annotations/*
 !data/annotations/.gitkeep
 
+# Configuration
+config.json
+
 # Logs
 *.log
 logs/

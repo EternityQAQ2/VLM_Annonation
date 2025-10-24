@@ -6,8 +6,8 @@
         <div class="header-content">
           <h1><el-icon><PictureFilled /></el-icon> VLM 工业标签检测标注工具</h1>
           <div class="header-actions">
-            <el-button type="primary" @click="selectFolder" :icon="FolderOpened">
-              选择图片文件夹
+            <el-button type="primary" @click="openSettings" :icon="Setting">
+              设置
             </el-button>
             <el-button type="success" @click="handleExport" :icon="Download">
               导出数据集
@@ -59,12 +59,20 @@
             <el-empty description="请从左侧选择一张图片开始标注" />
           </div>
 
-          <div v-else class="annotation-workspace">
+          <div v-else-if="currentImage" class="annotation-workspace">
+            <!-- 调试信息 -->
+            <div style="background: #f0f0f0; padding: 10px; margin-bottom: 10px; border-radius: 4px;">
+              <strong>调试信息：</strong><br>
+              当前图片: {{ currentImage?.name }}<br>
+              标注数据存在: {{ annotation ? '是' : '否' }}<br>
+              缩放级别: {{ zoomLevel }}
+            </div>
+
             <!-- 图片查看器 -->
             <el-card class="image-viewer-card" shadow="never">
               <template #header>
                 <div class="card-header">
-                  <span><el-icon><Picture /></el-icon> 图片预览</span>
+                  <span><el-icon><Picture /></el-icon> 图片预览 - {{ currentImage.name }}</span>
                   <el-button-group size="small">
                     <el-button @click="zoomIn" :icon="ZoomIn">放大</el-button>
                     <el-button @click="zoomOut" :icon="ZoomOut">缩小</el-button>
@@ -78,6 +86,8 @@
                   :alt="currentImage.name"
                   :style="{ transform: `scale(${zoomLevel})` }"
                   class="preview-image"
+                  @error="handleImageError"
+                  @load="handleImageLoad"
                 />
               </div>
             </el-card>
@@ -95,7 +105,15 @@
                 </div>
               </template>
 
-              <el-form :model="annotation" label-width="120px" label-position="left">
+              <!-- 加载中提示 -->
+              <div v-if="!annotation" style="padding: 40px; text-align: center;">
+                <el-icon :size="40" style="color: #409eff;">
+                  <Loading />
+                </el-icon>
+                <p style="margin-top: 20px; color: #909399;">加载标注数据中...</p>
+              </div>
+
+              <el-form v-if="annotation" :model="annotation" label-width="120px" label-position="left">
                 <!-- 整体状态 -->
                 <el-form-item label="整体状态">
                   <el-radio-group v-model="annotation.overall_status" size="large">
@@ -109,20 +127,21 @@
                 <!-- 缺陷类型标注 -->
                 <h3 class="section-title">缺陷分类检测</h3>
                 
-                <div
-                  v-for="(category, index) in annotation.defect_categories"
-                  :key="category.number"
-                  class="defect-category-section"
-                >
-                  <el-card :body-style="{ padding: '15px' }">
-                    <div class="category-header">
-                      <h4>
-                        <el-tag :type="category.compliance ? 'success' : 'danger'" size="large">
-                          {{ category.number }}. {{ category.category }}
-                        </el-tag>
-                      </h4>
-                      <span class="category-desc">{{ getCategoryDescription(category.number) }}</span>
-                    </div>
+                <div v-if="annotation && annotation.defect_categories">
+                  <div
+                    v-for="(category, index) in annotation.defect_categories"
+                    :key="category.number"
+                    class="defect-category-section"
+                  >
+                    <el-card :body-style="{ padding: '15px' }">
+                      <div class="category-header">
+                        <h4>
+                          <el-tag :type="category.compliance ? 'success' : 'danger'" size="large">
+                            {{ category.number }}. {{ category.category }}
+                          </el-tag>
+                        </h4>
+                        <span class="category-desc">{{ getCategoryDescription(category.number) }}</span>
+                      </div>
 
                     <el-form-item label="合规性">
                       <el-radio-group v-model="category.compliance" size="default">
@@ -154,11 +173,12 @@
                     </el-form-item>
                   </el-card>
                 </div>
+                </div>
 
                 <el-divider />
 
                 <!-- 其他信息 -->
-                <el-form-item label="置信度分数">
+                <el-form-item label="置信度分数" v-if="annotation">
                   <el-slider
                     v-model="annotation.confidence_score"
                     :min="0"
@@ -166,11 +186,8 @@
                     :step="0.05"
                     show-input
                     :marks="{ 0: '0', 0.5: '0.5', 1: '1' }"
+                    style="padding-right: 20px;"
                   />
-                </el-form-item>
-
-                <el-form-item label="图片路径">
-                  <el-input v-model="annotation.image_path" />
                 </el-form-item>
               </el-form>
             </el-card>
@@ -178,6 +195,105 @@
         </el-main>
       </el-container>
     </el-container>
+
+    <!-- 设置对话框 -->
+    <el-dialog
+      v-model="settingsVisible"
+      title="应用设置"
+      width="900px"
+      :close-on-click-modal="false"
+      class="settings-dialog"
+    >
+      <el-tabs v-model="activeTab" type="card">
+        <!-- 基础设置 -->
+        <el-tab-pane label="基础设置" name="basic">
+          <el-form :model="settings" label-width="140px" label-position="top" class="settings-form">
+            <el-form-item label="图片文件夹">
+              <div class="folder-select">
+                <el-input v-model="settings.images_dir" readonly placeholder="请选择图片文件夹" />
+                <el-button type="primary" @click="selectImagesFolder" :icon="FolderOpened">
+                  选择文件夹
+                </el-button>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="标注文件夹">
+              <div class="folder-select">
+                <el-input v-model="settings.annotations_dir" readonly placeholder="请选择标注文件夹" />
+                <el-button type="primary" @click="selectAnnotationsFolder" :icon="FolderOpened">
+                  选择文件夹
+                </el-button>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="导出格式">
+              <el-select v-model="settings.export_format" style="width: 100%;">
+                <el-option label="VLM 格式（带 Prompt）" value="vlm" />
+                <el-option label="标准格式" value="standard" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="JSON 缩进空格">
+              <div class="indent-setting">
+                <el-input-number
+                  v-model="settings.json_indent"
+                  :min="0"
+                  :max="8"
+                  :step="1"
+                />
+                <span class="setting-hint">
+                  设置为 0 则压缩成一行
+                </span>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="自动保存">
+              <div class="switch-setting">
+                <el-switch v-model="settings.auto_save" />
+                <span class="setting-hint">
+                  切换图片时自动保存当前标注
+                </span>
+              </div>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- VLM Prompt 配置 -->
+        <el-tab-pane label="Prompt 配置" name="prompt">
+          <el-form label-width="140px" label-position="top" class="settings-form">
+            <el-form-item label="VLM 提示词模板">
+              <el-alert
+                title="提示"
+                type="info"
+                :closable="false"
+                style="margin-bottom: 15px;"
+              >
+                此提示词将在导出 VLM 格式时自动注入到每个样本的 messages 中作为 user 角色的内容。
+              </el-alert>
+              <el-input
+                v-model="settings.prompt_template"
+                type="textarea"
+                :rows="20"
+                placeholder="输入您的 VLM 提示词模板..."
+                style="font-family: 'Consolas', 'Monaco', monospace; font-size: 13px;"
+              />
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- JSON 字段配置（未来功能） -->
+        <el-tab-pane label="字段配置" name="schema" disabled>
+          <el-empty description="字段配置功能即将推出，敬请期待！" />
+        </el-tab-pane>
+      </el-tabs>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="settingsVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveSettings">保存设置</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -185,7 +301,7 @@
 import { ref, computed, onMounted } from 'vue'
 import {
   Picture, PictureFilled, Edit, Download, Refresh, Search,
-  ZoomIn, ZoomOut, RefreshLeft, Check, CircleCheck, CircleClose, FolderOpened
+  ZoomIn, ZoomOut, RefreshLeft, Check, CircleCheck, CircleClose, FolderOpened, Setting, Loading
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from './api'
@@ -197,6 +313,16 @@ const annotation = ref(null)
 const config = ref(null)
 const searchText = ref('')
 const zoomLevel = ref(1)
+const settingsVisible = ref(false)
+const activeTab = ref('basic')
+const settings = ref({
+  images_dir: '',
+  annotations_dir: '',
+  export_format: 'vlm',
+  auto_save: true,
+  json_indent: 2,
+  prompt_template: ''
+})
 
 // 计算属性
 const filteredImages = computed(() => {
@@ -218,19 +344,44 @@ const loadImages = async () => {
 
 const loadConfig = async () => {
   try {
-    config.value = await api.getConfig()
+    const data = await api.getConfig()
+    config.value = data
+    // 加载应用配置到设置
+    if (data.app_config) {
+      settings.value = { ...settings.value, ...data.app_config }
+    }
   } catch (error) {
     ElMessage.error('加载配置失败')
   }
 }
 
 const selectImage = async (image) => {
+  console.log('=== 开始选择图片 ===')
+  console.log('图片信息:', image)
+  
+  // 如果启用了自动保存，先保存当前标注
+  if (settings.value.auto_save && currentImage.value && annotation.value) {
+    try {
+      await api.saveAnnotation(currentImage.value.name, annotation.value)
+      console.log('自动保存成功')
+    } catch (error) {
+      console.error('自动保存失败:', error)
+    }
+  }
+  
+  // 设置当前图片
   currentImage.value = image
   zoomLevel.value = 1
+  
+  console.log('当前图片已设置:', currentImage.value)
+  console.log('图片 URL:', getImageUrl(image.name))
+  
   try {
     annotation.value = await api.getAnnotation(image.name)
+    console.log('加载的标注数据:', annotation.value)
   } catch (error) {
-    ElMessage.error('加载标注数据失败')
+    console.error('加载标注数据失败:', error)
+    ElMessage.error('加载标注数据失败: ' + (error.message || '未知错误'))
   }
 }
 
@@ -259,16 +410,21 @@ const saveAnnotation = async () => {
 const handleExport = async () => {
   try {
     const data = await api.exportDataset()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify(data.data, null, settings.value.json_indent)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `dataset_export_${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `vlm_dataset_${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    ElMessage.success('数据集导出成功')
+    
+    ElMessage.success({
+      message: `成功导出 ${data.total} 条标注数据（${data.format} 格式）`,
+      duration: 3000
+    })
   } catch (error) {
-    ElMessage.error('导出失败')
+    console.error('Export error:', error)
+    ElMessage.error('导出失败：' + (error.message || '未知错误'))
   }
 }
 
@@ -289,25 +445,59 @@ const resetZoom = () => {
   zoomLevel.value = 1
 }
 
-const selectFolder = () => {
-  ElMessageBox.alert(
-    '请将图片文件复制到以下文件夹中：\n\nD:\\VLMlabelme\\data\\images\n\n然后点击"刷新"按钮重新加载图片列表。',
-    '选择图片文件夹',
-    {
-      confirmButtonText: '打开文件夹',
-      callback: async (action) => {
-        if (action === 'confirm') {
-          try {
-            // 使用后端 API 打开文件夹
-            await api.openFolder('images')
-            ElMessage.success('文件夹已打开，请复制图片后点击刷新')
-          } catch (error) {
-            ElMessage.info('请手动打开文件夹：D:\\VLMlabelme\\data\\images')
-          }
-        }
-      }
+const openSettings = () => {
+  settingsVisible.value = true
+}
+
+const selectImagesFolder = async () => {
+  try {
+    const result = await api.selectFolder('images')
+    if (result.success) {
+      settings.value.images_dir = result.folder_path
+      ElMessage.success('已选择图片文件夹')
     }
-  )
+  } catch (error) {
+    ElMessage.error('选择文件夹失败: ' + error.message)
+  }
+}
+
+const selectAnnotationsFolder = async () => {
+  try {
+    const result = await api.selectFolder('annotations')
+    if (result.success) {
+      settings.value.annotations_dir = result.folder_path
+      ElMessage.success('已选择标注文件夹')
+    }
+  } catch (error) {
+    ElMessage.error('选择文件夹失败: ' + error.message)
+  }
+}
+
+const saveSettings = async () => {
+  try {
+    await api.updateConfig(settings.value)
+    settingsVisible.value = false
+    ElMessage.success('设置已保存，正在重新加载...')
+    // 重新加载配置和图片列表
+    await loadConfig()
+    await loadImages()
+  } catch (error) {
+    ElMessage.error('保存设置失败: ' + error.message)
+  }
+}
+
+const selectFolder = () => {
+  // 打开设置对话框
+  openSettings()
+}
+
+const handleImageError = (event) => {
+  console.error('图片加载失败:', event.target.src)
+  ElMessage.error('图片加载失败，请检查图片路径')
+}
+
+const handleImageLoad = () => {
+  console.log('图片加载成功')
 }
 
 // 生命周期
@@ -555,5 +745,155 @@ onMounted(async () => {
 .status-fail.is-active :deep(.el-radio-button__inner) {
   background-color: #f56c6c;
   border-color: #f56c6c;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.folder-select {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.folder-select .el-input {
+  flex: 1;
+}
+
+.folder-select .el-button {
+  flex-shrink: 0;
+  min-width: 120px;
+  white-space: nowrap;
+}
+
+.settings-form {
+  padding: 20px 0;
+}
+
+.settings-form .el-form-item {
+  margin-bottom: 24px;
+}
+
+.indent-setting,
+.switch-setting {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.setting-hint {
+  color: #86868b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 滑块样式优化 */
+:deep(.el-slider) {
+  padding-right: 20px;
+}
+
+:deep(.el-slider__runway) {
+  margin: 16px 0;
+}
+
+/* 表单项标签样式 */
+:deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #1d1d1f;
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+:deep(.el-form-item__content) {
+  line-height: normal;
+}
+
+/* 对话框样式 */
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid #e5e5e7;
+  padding: 20px 24px;
+  margin: 0;
+}
+
+:deep(.el-dialog__title) {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+/* Tabs 样式 */
+:deep(.el-tabs__header) {
+  margin: 0 0 20px 0;
+}
+
+:deep(.el-tabs__item) {
+  font-weight: 500;
+  padding: 0 20px;
+  height: 40px;
+  line-height: 40px;
+}
+
+:deep(.el-tabs__item.is-active) {
+  color: #0071e3;
+}
+
+/* 文本域样式 */
+:deep(.el-textarea__inner) {
+  padding: 12px;
+  line-height: 1.6;
+  border-radius: 8px;
+  border-color: #d2d2d7;
+}
+
+:deep(.el-textarea__inner:focus) {
+  border-color: #0071e3;
+}
+
+:deep(.el-dialog__footer) {
+  border-top: 1px solid #e5e5e7;
+  padding: 16px 24px;
+}
+
+:deep(.el-input__wrapper) {
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #d2d2d7 inset;
+  transition: all 0.2s;
+}
+
+:deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #b3b3b8 inset;
+}
+
+:deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 2px #007aff inset;
+}
+
+:deep(.el-button) {
+  border-radius: 6px;
+  padding: 9px 16px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+:deep(.el-button--primary) {
+  background-color: #007aff;
+  border-color: #007aff;
+}
+
+:deep(.el-button--primary:hover) {
+  background-color: #0051d5;
+  border-color: #0051d5;
+}
+
+:deep(.el-select .el-input__wrapper) {
+  border-radius: 6px;
 }
 </style>

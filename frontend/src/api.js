@@ -23,6 +23,16 @@ export default {
     return api.get('/config')
   },
   
+  // 更新配置
+  updateConfig(config) {
+    return api.post('/config', config)
+  },
+  
+  // 选择文件夹
+  selectFolder(folderType) {
+    return api.post('/select-folder', { folder_type: folderType })
+  },
+  
   // 获取图片列表
   getImages() {
     return api.get('/images')
@@ -30,7 +40,12 @@ export default {
   
   // 获取图片URL
   getImageUrl(filename) {
-    return `/api/images/${filename}`
+    // 开发环境使用绝对路径（避免代理问题）
+    if (import.meta.env.DEV) {
+      return `http://localhost:5000/api/images/${encodeURIComponent(filename)}`
+    }
+    // 生产环境使用相对路径
+    return `/api/images/${encodeURIComponent(filename)}`
   },
   
   // 获取标注数据
