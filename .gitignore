@@ -34,7 +34,7 @@ dist/
 Thumbs.db
 
 # Data (keep structure, ignore content)
-data/images/*
+data/*
 !data/images/.gitkeep
 data/annotations/*
 !data/annotations/.gitkeep
