@@ -35,6 +35,7 @@ Thumbs.db
 
 # Data (keep structure, ignore content)
 data/*
+!data\test.txt
 !data/images/.gitkeep
 data/annotations/*
 !data/annotations/.gitkeep

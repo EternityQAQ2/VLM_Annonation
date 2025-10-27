@@ -417,13 +417,18 @@ const exportAllAnnotations = async () => {
       return
     }
     
-    const blob = new Blob([JSON.stringify(annotations, null, settings.value.json_indent)], { 
+    // 转换所有标注为VLM格式
+    const vlmDataList = annotations.map(item => {
+      return convertToVLMFormat(item.image_name + '.jpeg', item.annotation)
+    })
+    
+    const blob = new Blob([JSON.stringify(vlmDataList, null, settings.value.json_indent)], { 
       type: 'application/json' 
     })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `all_annotations_${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `all_annotations_vlm_${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
     
@@ -442,7 +447,10 @@ const exportCurrentAnnotation = async () => {
   }
   
   try {
-    const blob = new Blob([JSON.stringify(annotation.value, null, settings.value.json_indent)], { 
+    // 构建VLM格式的输出
+    const vlmFormat = convertToVLMFormat(currentImage.value.name, annotation.value)
+    
+    const blob = new Blob([JSON.stringify(vlmFormat, null, settings.value.json_indent)], { 
       type: 'application/json' 
     })
     const url = URL.createObjectURL(blob)
@@ -457,6 +465,92 @@ const exportCurrentAnnotation = async () => {
     console.error('Export current error:', error)
     ElMessage.error('导出失败：' + (error.message || '未知错误'))
   }
+}
+
+// 转换为VLM格式
+const convertToVLMFormat = (imageName, annotationData) => {
+  // 计算相对于data目录的路径
+  const imagePath = getRelativeImagePath(imageName)
+  
+  // 获取Prompt配置 - 直接从settings读取
+  const userPrompt = settings.value.prompt_template || ''
+  
+  // 构建user content（prompt + 返回格式要求）
+  let userContent = '<image>'
+  if (userPrompt) {
+    userContent += ' \n' + userPrompt
+  }
+  
+  // 按照前端配置的字段顺序重新构建标注数据对象
+  const orderedAnnotation = {}
+  
+  // 获取字段配置顺序
+  const fieldConfigs = config.value?.app_config?.json_fields || []
+  
+  // 按照配置顺序添加字段
+  fieldConfigs.forEach(fieldConfig => {
+    const fieldName = fieldConfig.name
+    if (annotationData[fieldName] !== undefined) {
+      orderedAnnotation[fieldName] = annotationData[fieldName]
+    }
+  })
+  
+  // 添加配置中没有但数据中存在的其他字段（排除内部字段）
+  for (const key in annotationData) {
+    if (!orderedAnnotation.hasOwnProperty(key) &&
+        key !== 'image_name' &&
+        key !== 'image_path' &&
+        key !== 'created_at' &&
+        key !== 'updated_at') {
+      orderedAnnotation[key] = annotationData[key]
+    }
+  }
+  
+  const assistantContent = JSON.stringify(orderedAnnotation, null, 2)
+  
+  // 构建VLM格式
+  const vlmData = {
+    images: [imagePath],
+    messages: [
+      {
+        content: userContent,
+        role: 'user'
+      },
+      {
+        content: assistantContent,
+        role: 'assistant'
+      }
+    ]
+  }
+  
+  return vlmData
+}
+
+// 获取相对于data目录的图片路径
+const getRelativeImagePath = (imageName) => {
+  const imagesDir = settings.value.images_dir || ''
+  
+  // 标准化路径分隔符为反斜杠
+  const normalizedPath = imagesDir.replace(/\//g, '\\')
+  
+  // 查找data目录的位置（不区分大小写）
+  const dataIndex = normalizedPath.toLowerCase().indexOf('\\data\\')
+  if (dataIndex === -1) {
+    // 如果没有找到data目录，尝试查找/data/格式
+    const dataIndexSlash = imagesDir.toLowerCase().indexOf('/data/')
+    if (dataIndexSlash === -1) {
+      // 都没找到，返回简单路径
+      return imageName
+    }
+    // 提取data之后的路径（使用正斜杠）
+    const relativePath = imagesDir.substring(dataIndexSlash + 6) // +6 跳过 /data/
+    return relativePath + '/' + imageName
+  }
+  
+  // 提取data之后的路径（使用反斜杠格式）
+  const relativePath = normalizedPath.substring(dataIndex + 6) // +6 跳过 \data\
+  // 转换为正斜杠格式（VLM标准格式）
+  return relativePath.replace(/\\/g, '/') + '/' + imageName
 }
 
 const handleRefresh = async () => {
