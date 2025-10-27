@@ -6,10 +6,26 @@ import subprocess
 import platform
 from datetime import datetime
 from pathlib import Path
-from tkinter import Tk, filedialog
 
 app = Flask(__name__)
 CORS(app)
+
+# 检测是否有 GUI 环境
+def has_gui_support():
+    """检测系统是否支持 GUI"""
+    try:
+        # 尝试导入 tkinter
+        import tkinter
+        # 尝试创建一个隐藏窗口
+        root = tkinter.Tk()
+        root.withdraw()
+        root.destroy()
+        return True
+    except Exception:
+        return False
+
+# 全局变量：是否支持 GUI
+GUI_AVAILABLE = has_gui_support()
 
 # 配置路径
 BASE_DIR = Path(__file__).parent.parent
@@ -104,7 +120,8 @@ def get_config():
     return jsonify({
         "defect_categories": DEFECT_CATEGORIES,
         "status_options": ["PASS", "FAIL"],
-        "app_config": app_config
+        "app_config": app_config,
+        "gui_available": GUI_AVAILABLE  # 告知前端是否支持 GUI
     })
 
 
@@ -132,33 +149,93 @@ def update_config():
 
 @app.route('/api/select-folder', methods=['POST'])
 def select_folder():
-    """打开文件夹选择对话框"""
+    """选择文件夹 - 智能模式：GUI环境用对话框，容器环境用手动输入"""
     try:
         data = request.json
         folder_type = data.get('folder_type', 'images')
+        folder_path = data.get('folder_path', '')
+        use_dialog = data.get('use_dialog', True)  # 前端可以指定是否使用对话框
         
-        # 创建隐藏的 Tk 窗口
-        root = Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
+        # 模式 1: 使用文件对话框（如果支持 GUI 且前端要求）
+        if GUI_AVAILABLE and use_dialog and not folder_path:
+            try:
+                from tkinter import Tk, filedialog
+                
+                # 创建隐藏的 Tk 窗口
+                root = Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                
+                # 打开文件夹选择对话框
+                selected_folder = filedialog.askdirectory(
+                    title=f"选择{'图片' if folder_type == 'images' else '标注'}文件夹"
+                )
+                
+                root.destroy()
+                
+                if selected_folder:
+                    folder_path = selected_folder
+                else:
+                    return jsonify({
+                        "success": False, 
+                        "message": "未选择文件夹",
+                        "use_manual_input": False
+                    }), 400
+            except Exception as e:
+                # GUI 模式失败，回退到手动输入
+                return jsonify({
+                    "success": False,
+                    "message": f"无法打开文件选择对话框: {str(e)}",
+                    "use_manual_input": True,
+                    "gui_available": False
+                }), 400
         
-        # 打开文件夹选择对话框
-        selected_folder = filedialog.askdirectory(
-            title=f"选择{'图片' if folder_type == 'images' else '标注'}文件夹"
-        )
-        
-        root.destroy()
-        
-        if selected_folder:
+        # 模式 2: 手动输入路径验证
+        if not folder_path:
             return jsonify({
-                "success": True,
-                "folder_path": selected_folder,
-                "folder_type": folder_type
-            })
+                "success": False, 
+                "message": "请提供文件夹路径",
+                "use_manual_input": True
+            }), 400
+        
+        # 验证路径是否存在
+        path_obj = Path(folder_path)
+        if not path_obj.exists():
+            # 尝试创建目录
+            try:
+                path_obj.mkdir(parents=True, exist_ok=True)
+                message = f"已创建目录: {folder_path}"
+            except Exception as e:
+                return jsonify({
+                    "success": False, 
+                    "message": f"路径不存在且无法创建: {folder_path}\n错误: {str(e)}",
+                    "use_manual_input": not GUI_AVAILABLE
+                }), 400
+        elif not path_obj.is_dir():
+            return jsonify({
+                "success": False, 
+                "message": f"路径不是一个有效的目录: {folder_path}",
+                "use_manual_input": not GUI_AVAILABLE
+            }), 400
         else:
-            return jsonify({"success": False, "message": "未选择文件夹"}), 400
+            # 统计目录中的文件数
+            file_count = len(list(path_obj.iterdir())) if path_obj.is_dir() else 0
+            message = f"已验证路径: {folder_path} ({file_count} 个文件/目录)"
+        
+        return jsonify({
+            "success": True,
+            "folder_path": str(path_obj.absolute()),
+            "folder_type": folder_type,
+            "message": message,
+            "method": "dialog" if (GUI_AVAILABLE and use_dialog) else "manual",
+            "gui_available": GUI_AVAILABLE
+        })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": f"设置路径失败: {str(e)}",
+            "use_manual_input": not GUI_AVAILABLE,
+            "gui_available": GUI_AVAILABLE
+        }), 500
 
 
 @app.route('/api/images', methods=['GET'])
@@ -354,4 +431,5 @@ def open_folder():
 if __name__ == '__main__':
     print(f"Images directory: {IMAGES_DIR}")
     print(f"Annotations directory: {ANNOTATIONS_DIR}")
+    print(f"GUI support: {'Available' if GUI_AVAILABLE else 'Not available (container mode)'}")
     app.run(debug=True, host='0.0.0.0', port=5000)

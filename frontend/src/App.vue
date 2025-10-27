@@ -577,26 +577,118 @@ const openSettings = async () => {
 }
 
 const selectImagesFolder = async () => {
+  // 检查是否支持 GUI
+  const guiAvailable = config.value?.gui_available || false
+  
+  if (guiAvailable) {
+    // GUI 模式：直接调用对话框
+    try {
+      const result = await api.selectFolder('images', '', true) // use_dialog = true
+      if (result.success) {
+        settings.value.images_dir = result.folder_path
+        ElMessage.success(result.message || '图片文件夹设置成功')
+      }
+    } catch (error) {
+      // 如果对话框失败，回退到手动输入
+      if (error.response?.data?.use_manual_input) {
+        await selectImagesFolderManually()
+      } else {
+        ElMessage.error('选择文件夹失败: ' + (error.message || error))
+      }
+    }
+  } else {
+    // 容器模式：手动输入
+    await selectImagesFolderManually()
+  }
+}
+
+const selectImagesFolderManually = async () => {
   try {
-    const result = await api.selectFolder('images')
+    const { value: folderPath } = await ElMessageBox.prompt(
+      '请输入图片文件夹的完整路径' + (config.value?.gui_available ? '' : '（容器内路径）'), 
+      '设置图片文件夹', 
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPlaceholder: '例如: /app/data/images 或 /mnt/host_data/images',
+        inputValue: settings.value.images_dir || '/app/data/images',
+        inputValidator: (value) => {
+          if (!value || value.trim() === '') {
+            return '路径不能为空'
+          }
+          return true
+        }
+      }
+    )
+    
+    // 验证路径
+    const result = await api.selectFolder('images', folderPath.trim(), false) // use_dialog = false
     if (result.success) {
       settings.value.images_dir = result.folder_path
-      ElMessage.success('已选择图片文件夹')
+      ElMessage.success(result.message || '图片文件夹设置成功')
     }
   } catch (error) {
-    ElMessage.error('选择文件夹失败: ' + error.message)
+    if (error !== 'cancel') {
+      ElMessage.error('设置文件夹失败: ' + (error.message || error))
+    }
   }
 }
 
 const selectAnnotationsFolder = async () => {
+  // 检查是否支持 GUI
+  const guiAvailable = config.value?.gui_available || false
+  
+  if (guiAvailable) {
+    // GUI 模式：直接调用对话框
+    try {
+      const result = await api.selectFolder('annotations', '', true) // use_dialog = true
+      if (result.success) {
+        settings.value.annotations_dir = result.folder_path
+        ElMessage.success(result.message || '标注文件夹设置成功')
+      }
+    } catch (error) {
+      // 如果对话框失败，回退到手动输入
+      if (error.response?.data?.use_manual_input) {
+        await selectAnnotationsFolderManually()
+      } else {
+        ElMessage.error('选择文件夹失败: ' + (error.message || error))
+      }
+    }
+  } else {
+    // 容器模式：手动输入
+    await selectAnnotationsFolderManually()
+  }
+}
+
+const selectAnnotationsFolderManually = async () => {
   try {
-    const result = await api.selectFolder('annotations')
+    const { value: folderPath } = await ElMessageBox.prompt(
+      '请输入标注文件夹的完整路径' + (config.value?.gui_available ? '' : '（容器内路径）'), 
+      '设置标注文件夹', 
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPlaceholder: '例如: /app/data/annotations 或 /mnt/host_data/annotations',
+        inputValue: settings.value.annotations_dir || '/app/data/annotations',
+        inputValidator: (value) => {
+          if (!value || value.trim() === '') {
+            return '路径不能为空'
+          }
+          return true
+        }
+      }
+    )
+    
+    // 验证路径
+    const result = await api.selectFolder('annotations', folderPath.trim(), false) // use_dialog = false
     if (result.success) {
       settings.value.annotations_dir = result.folder_path
-      ElMessage.success('已选择标注文件夹')
+      ElMessage.success(result.message || '标注文件夹设置成功')
     }
   } catch (error) {
-    ElMessage.error('选择文件夹失败: ' + error.message)
+    if (error !== 'cancel') {
+      ElMessage.error('设置文件夹失败: ' + (error.message || error))
+    }
   }
 }
 

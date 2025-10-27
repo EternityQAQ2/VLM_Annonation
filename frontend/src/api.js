@@ -29,8 +29,12 @@ export default {
   },
   
   // 选择文件夹
-  selectFolder(folderType) {
-    return api.post('/select-folder', { folder_type: folderType })
+  selectFolder(folderType, folderPath = '', useDialog = true) {
+    return api.post('/select-folder', { 
+      folder_type: folderType,
+      folder_path: folderPath,
+      use_dialog: useDialog
+    })
   },
   
   // 获取图片列表
