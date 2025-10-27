@@ -20,16 +20,49 @@ CONFIG_FILE = BASE_DIR / "config.json"
 DEFAULT_CONFIG = {
     "images_dir": str(DATA_DIR / "images"),
     "annotations_dir": str(DATA_DIR / "annotations"),
-    "export_format": "vlm",  # vlm, standard, coco, yolo
     "auto_save": True,
     "json_indent": 2,
     "prompt_template": "<image> \n你是一个工业打印标签检测专家。\n只关注标签区域（金属凹陷处区域），金属凹陷处外的缺陷不予考虑，请按照以下缺陷类型分类检测标签质量：\n1. 缺失元素（文字、二维码等关键元素丢失）或过多元素（如打印本不应该有的元素）\n2. 偏移问题（标签位置偏移、字符偏移）\n3. 物理缺陷（气泡、皱褶、划痕、污渍、墨点,标签多打印，标签断裂、打印颠倒）\n4. 打印质量（字迹模糊、字迹黯淡、字符打印不完整、二维码打印质量、二维码打印不完整、打印字符错误等）\n5. 整体布局（元素排版问题）\n\n返回格式如下（JSON可以换行，便于阅读）：\n{\n  \"overall_status\": \"PASS\" 或 \"FAIL\",\n  \"defect_categories\": [\n    {\n      \"number\": 1,\n      \"category\": \"缺失元素\",\n      \"compliance\": true/false,\n      \"result\": \"具体检测结果描述\",\n      \"details\": []\n    },\n    {\n      \"number\": 2,\n      \"category\": \"偏移问题\",\n      \"compliance\": true/false,\n      \"result\": \"具体检测结果描述\",\n      \"details\": []\n    },\n    {\n      \"number\": 3,\n      \"category\": \"物理缺陷\",\n      \"compliance\": true/false,\n      \"result\": \"具体检测结果描述\",\n      \"details\": []\n    },\n    {\n      \"number\": 4,\n      \"category\": \"打印质量\",\n      \"compliance\": true/false,\n      \"result\": \"具体检测结果描述\",\n      \"details\": []\n    },\n    {\n      \"number\": 5,\n      \"category\": \"整体布局\",\n      \"compliance\": true/false,\n      \"result\": \"具体检测结果描述\",\n      \"details\": []\n    }\n  ],\n  \"confidence_score\": 0.95,\n  \"processing_info\": {\n    \"stage\": \"defect_classification\",\n    \"template_matched\": true,\n    \"categories_checked\": [\"缺失元素\", \"偏移问题\", \"物理缺陷\", \"打印质量\", \"整体布局\"]\n  }\n}\n\n请只返回这个JSON格式的内容，JSON可以换行以便阅读。",
-    "json_schema": {
-        "overall_status": {"type": "enum", "values": ["PASS", "FAIL"], "required": True},
-        "defect_categories": {"type": "array", "required": True},
-        "confidence_score": {"type": "number", "required": True},
-        "processing_info": {"type": "object", "required": False}
-    }
+    "json_fields": [
+        {
+            "name": "overall_status", 
+            "type": "string", 
+            "required": True, 
+            "defaultValue": "PASS", 
+            "description": "整体检测状态",
+            "children": []
+        },
+        {
+            "name": "defect_categories", 
+            "type": "array", 
+            "required": True, 
+            "defaultValue": "", 
+            "description": "缺陷分类列表",
+            "children": [
+                {"name": "number", "type": "number", "required": True, "defaultValue": "", "description": "序号", "children": []},
+                {"name": "category", "type": "string", "required": True, "defaultValue": "", "description": "分类名称", "children": []},
+                {"name": "compliance", "type": "boolean", "required": True, "defaultValue": "true", "description": "是否合规", "children": []},
+                {"name": "result", "type": "string", "required": False, "defaultValue": "", "description": "检测结果", "children": []},
+                {"name": "details", "type": "array", "required": False, "defaultValue": "", "description": "详细信息", "children": []}
+            ]
+        },
+        {
+            "name": "confidence_score", 
+            "type": "number", 
+            "required": True, 
+            "defaultValue": "0.95", 
+            "description": "置信度分数",
+            "children": []
+        },
+        {
+            "name": "processing_info",
+            "type": "object",
+            "required": False,
+            "defaultValue": "",
+            "description": "处理信息",
+            "children": []
+        }
+    ]
 }
 
 # 加载配置
@@ -156,12 +189,8 @@ def serve_image(filename):
     """提供图片文件"""
     try:
         image_path = IMAGES_DIR / filename
-        print(f"[图片请求] 文件名: {filename}")
-        print(f"[图片请求] 完整路径: {image_path}")
-        print(f"[图片请求] 文件存在: {image_path.exists()}")
         
         if not image_path.exists():
-            print(f"[错误] 文件不存在: {image_path}")
             return jsonify({"error": f"文件不存在: {filename}"}), 404
             
         return send_from_directory(IMAGES_DIR, filename)
@@ -178,20 +207,13 @@ def get_annotation(image_name):
         base_name = Path(image_name).stem
         annotation_file = ANNOTATIONS_DIR / f"{base_name}.json"
         
-        print(f"[标注请求] 图片名: {image_name}")
-        print(f"[标注请求] 基础名: {base_name}")
-        print(f"[标注请求] 标注文件: {annotation_file}")
-        print(f"[标注请求] 文件存在: {annotation_file.exists()}")
-        
         if annotation_file.exists():
             with open(annotation_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            print(f"[标注请求] 返回已存在的标注")
             return jsonify(data)
         else:
             # 返回默认的空标注
             default_data = get_default_annotation(image_name)
-            print(f"[标注请求] 返回默认标注")
             return jsonify(default_data)
     except Exception as e:
         print(f"[错误] 获取标注失败: {str(e)}")
@@ -240,88 +262,62 @@ def get_all_annotations():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/export', methods=['GET'])
-def export_dataset():
-    """导出完整数据集为 VLM 格式"""
-    try:
-        export_format = app_config.get("export_format", "vlm")
-        prompt_template = app_config.get("prompt_template", "")
-        json_indent = app_config.get("json_indent", 2)
-        
-        dataset = []
-        
-        for file in ANNOTATIONS_DIR.iterdir():
-            if file.suffix == '.json':
-                with open(file, 'r', encoding='utf-8') as f:
-                    annotation = json.load(f)
-                    
-                    if export_format == "vlm":
-                        # VLM 格式：包含 images 和 messages
-                        # 从标注中提取图片路径
-                        image_name = annotation.get("image_name", "")
-                        relative_path = f"FINALPART/{image_name}"  # 可配置前缀
-                        
-                        # 构建 assistant 的回复（标注数据的 JSON）
-                        response_data = {
-                            "overall_status": annotation.get("overall_status", "PASS"),
-                            "defect_categories": annotation.get("defect_categories", []),
-                            "confidence_score": annotation.get("confidence_score", 0.95),
-                            "processing_info": annotation.get("processing_info", {})
-                        }
-                        
-                        vlm_item = {
-                            "images": [relative_path],
-                            "messages": [
-                                {
-                                    "content": prompt_template,
-                                    "role": "user"
-                                },
-                                {
-                                    "content": json.dumps(response_data, ensure_ascii=False, indent=json_indent),
-                                    "role": "assistant"
-                                }
-                            ]
-                        }
-                        dataset.append(vlm_item)
-                    else:
-                        # 标准格式
-                        dataset.append(annotation)
-        
-        return jsonify({
-            "export_time": datetime.now().isoformat(),
-            "format": export_format,
-            "data": dataset,
-            "total": len(dataset)
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
 def get_default_annotation(image_name):
-    """生成默认的空标注"""
-    return {
+    """根据配置生成默认的空标注"""
+    default_data = {
         "image_name": image_name,
         "image_path": f"images/{image_name}",
-        "overall_status": "PASS",
-        "defect_categories": [
-            {
-                "number": cat["number"],
-                "category": cat["category"],
-                "compliance": True,
-                "result": "",
-                "details": []
-            }
-            for cat in DEFECT_CATEGORIES
-        ],
-        "confidence_score": 0.95,
-        "processing_info": {
-            "stage": "defect_classification",
-            "template_matched": True,
-            "categories_checked": [cat["category"] for cat in DEFECT_CATEGORIES]
-        },
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat()
     }
+    
+    # 根据json_fields配置动态生成字段
+    if 'json_fields' in app_config:
+        for field_config in app_config['json_fields']:
+            field_name = field_config['name']
+            field_type = field_config['type']
+            default_value = field_config.get('defaultValue', '')
+            
+            # 根据类型设置默认值
+            if field_type == 'string':
+                default_data[field_name] = default_value if default_value else ''
+            elif field_type == 'number':
+                default_data[field_name] = float(default_value) if default_value else 0
+            elif field_type == 'boolean':
+                default_data[field_name] = default_value == 'true' or default_value == True
+            elif field_type == 'array':
+                # 数组类型默认为空数组，由用户手动添加项
+                default_data[field_name] = []
+            elif field_type == 'object':
+                # 递归生成对象字段
+                default_data[field_name] = generate_default_object(field_config.get('children', []))
+            else:
+                default_data[field_name] = default_value
+    
+    return default_data
+
+def generate_default_object(children_configs):
+    """递归生成默认对象"""
+    obj = {}
+    for child_config in children_configs:
+        field_name = child_config['name']
+        field_type = child_config['type']
+        default_value = child_config.get('defaultValue', '')
+        
+        if field_type == 'string':
+            obj[field_name] = default_value if default_value else ''
+        elif field_type == 'number':
+            obj[field_name] = float(default_value) if default_value else 0
+        elif field_type == 'boolean':
+            obj[field_name] = default_value == 'true' or default_value == True
+        elif field_type == 'array':
+            obj[field_name] = []
+        elif field_type == 'object':
+            obj[field_name] = generate_default_object(child_config.get('children', []))
+        else:
+            obj[field_name] = default_value
+    
+    return obj
 
 
 @app.route('/api/open-folder', methods=['POST'])

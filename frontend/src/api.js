@@ -63,11 +63,6 @@ export default {
     return api.get('/annotations')
   },
   
-  // 导出数据集
-  exportDataset() {
-    return api.get('/export')
-  },
-  
   // 打开文件夹
   openFolder(folderType) {
     return api.post('/open-folder', { folder_type: folderType })
