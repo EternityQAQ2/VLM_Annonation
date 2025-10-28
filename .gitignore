@@ -34,11 +34,12 @@ dist/
 Thumbs.db
 
 # Data (keep structure, ignore content)
-data/*
-!data\test.txt
-!data/images/.gitkeep
+data/images/*
 data/annotations/*
+!data/images/.gitkeep
 !data/annotations/.gitkeep
+data/thumbnails/*
+!data/thumbnails/.gitkeep
 
 # Configuration
 config.json

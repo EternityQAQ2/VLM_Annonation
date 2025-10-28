@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue缩略图调试</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        .stats { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .image-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
+        .image-item { border: 2px solid #ddd; padding: 15px; border-radius: 8px; background: white; }
+        .image-thumbnail { width: 100%; height: 150px; background: #f0f0f0; border: 2px solid #ff0000; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+        .image-thumbnail img { max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid #00ff00; }
+        .image-name { font-size: 12px; word-break: break-all; margin-bottom: 5px; }
+        .image-status { font-size: 11px; color: #666; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <h1>🔍 Vue缩略图调试页面</h1>
+            <div class="stats">
+                <div><strong>图片总数:</strong> {{ images.length }}</div>
+                <div><strong>已加载:</strong> <span class="success">{{ loadedCount }}</span></div>
+                <div><strong>加载失败:</strong> <span class="error">{{ failedCount }}</span></div>
+            </div>
+            
+            <div class="image-list">
+                <div v-for="(image, index) in images" :key="index" class="image-item">
+                    <div class="image-thumbnail">
+                        <img 
+                            :src="getThumbnailUrl(image.name)" 
+                            :alt="image.name"
+                            @load="onLoad(image.name)"
+                            @error="onError(image.name, $event)"
+                        />
+                    </div>
+                    <div class="image-name" :title="image.name">{{ image.name }}</div>
+                    <div class="image-status">
+                        <span v-if="image.loaded" class="success">✓ 已加载</span>
+                        <span v-else-if="image.failed" class="error">✗ 失败</span>
+                        <span v-else>⏳ 加载中...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const images = ref([]);
+                const loadedCount = computed(() => images.value.filter(img => img.loaded).length);
+                const failedCount = computed(() => images.value.filter(img => img.failed).length);
+
+                const getThumbnailUrl = (filename) => {
+                    const url = `http://localhost:5000/api/thumbnails/${encodeURIComponent(filename)}`;
+                    console.log('[缩略图URL]', filename, '->', url);
+                    return url;
+                };
+
+                const onLoad = (filename) => {
+                    console.log('[✓ 加载成功]', filename);
+                    const img = images.value.find(i => i.name === filename);
+                    if (img) {
+                        img.loaded = true;
+                        img.failed = false;
+                    }
+                };
+
+                const onError = (filename, event) => {
+                    console.error('[✗ 加载失败]', filename, event.target.src);
+                    const img = images.value.find(i => i.name === filename);
+                    if (img) {
+                        img.loaded = false;
+                        img.failed = true;
+                    }
+                };
+
+                const loadImages = async () => {
+                    try {
+                        const response = await fetch('http://localhost:5000/api/images');
+                        const data = await response.json();
+                        images.value = data.images.map(img => ({
+                            ...img,
+                            loaded: false,
+                            failed: false
+                        }));
+                        console.log('[图片列表已加载]', images.value.length, '张');
+                    } catch (error) {
+                        console.error('[加载失败]', error);
+                    }
+                };
+
+                onMounted(() => {
+                    console.log('[应用已挂载]');
+                    loadImages();
+                });
+
+                return {
+                    images,
+                    loadedCount,
+                    failedCount,
+                    getThumbnailUrl,
+                    onLoad,
+                    onError
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

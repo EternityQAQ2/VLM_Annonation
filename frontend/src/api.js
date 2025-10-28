@@ -44,12 +44,14 @@ export default {
   
   // 获取图片URL
   getImageUrl(filename) {
-    // 开发环境使用绝对路径（避免代理问题）
-    if (import.meta.env.DEV) {
-      return `http://localhost:5000/api/images/${encodeURIComponent(filename)}`
-    }
-    // 生产环境使用相对路径
+    // 始终使用相对路径，通过Vite代理转发
     return `/api/images/${encodeURIComponent(filename)}`
+  },
+  
+  // 获取缩略图URL
+  getThumbnailUrl(filename) {
+    // 始终使用相对路径，通过Vite代理转发
+    return `/api/thumbnails/${encodeURIComponent(filename)}`
   },
   
   // 获取标注数据

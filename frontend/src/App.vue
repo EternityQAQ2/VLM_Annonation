@@ -41,7 +41,13 @@
               @click="selectImage(image)"
             >
               <div class="image-thumbnail">
-                <img :src="getImageUrl(image.name)" :alt="image.name" />
+                <img 
+                  :src="getThumbnailUrl(image.name)" 
+                  :alt="image.name"
+                  :data-filename="image.name"
+                  @error="handleThumbnailError($event)"
+                  @load="handleThumbnailLoad($event)"
+                />
               </div>
               <div class="image-info">
                 <div class="image-name" :title="image.name">{{ image.name }}</div>
@@ -64,8 +70,10 @@
 
           <div v-else-if="currentImage">
             <!-- 调试信息 -->
-            <div style="background: #f5f5f7; padding: 1px 6px; margin-bottom: 2px; border-radius: 2px; font-size: 10px; color: #909399; line-height: 1; height: 14px; display: flex; align-items: center;">
-              {{ currentImage?.name }} | {{ annotation ? '✓' : '✗' }} | {{ zoomLevel }}x
+            <div class="debug-info" :title="currentImage?.name">
+              <span class="debug-filename">{{ currentImage?.name }}</span>
+              <span class="debug-status">{{ annotation ? '已加载' : '未加载' }}</span>
+              <span class="debug-zoom">{{ zoomLevel }}x</span>
             </div>
 
             <div class="annotation-workspace">
@@ -73,8 +81,11 @@
             <el-card class="image-viewer-card" shadow="never">
               <template #header>
                 <div class="card-header">
-                  <span><el-icon><Picture /></el-icon> 图片预览 - {{ currentImage.name }}</span>
-                  <el-button-group size="small">
+                  <span class="card-title" :title="currentImage.name">
+                    <el-icon><Picture /></el-icon> 
+                    <span class="image-name-text">图片预览 - {{ currentImage.name }}</span>
+                  </span>
+                  <el-button-group size="small" class="zoom-controls">
                     <el-button @click="zoomIn" :icon="ZoomIn">放大</el-button>
                     <el-button @click="zoomOut" :icon="ZoomOut">缩小</el-button>
                     <el-button @click="resetZoom" :icon="RefreshLeft">重置</el-button>
@@ -346,7 +357,10 @@ const loadImages = async () => {
   try {
     const data = await api.getImages()
     images.value = data.images
+    console.log('[图片列表已加载]', images.value.length, '张图片')
+    console.log('[前3张图片]', images.value.slice(0, 3).map(img => img.name))
   } catch (error) {
+    console.error('[加载图片列表失败]', error)
     ElMessage.error('加载图片列表失败')
   }
 }
@@ -392,6 +406,12 @@ const selectImage = async (image) => {
 
 const getImageUrl = (filename) => {
   return api.getImageUrl(filename)
+}
+
+const getThumbnailUrl = (filename) => {
+  const url = api.getThumbnailUrl(filename)
+  console.log('[缩略图URL]', filename, '->', url)
+  return url
 }
 
 const saveAnnotation = async () => {
@@ -902,10 +922,43 @@ const handleImageError = (event) => {
   ElMessage.error('图片加载失败，请检查图片路径')
 }
 
+const handleThumbnailLoad = (event) => {
+  // 缩略图加载成功
+  const filename = event.target.alt
+  console.log('[缩略图加载成功]', filename, `${event.target.naturalWidth}x${event.target.naturalHeight}`)
+}
+
+const handleThumbnailError = (event) => {
+  // 缩略图加载失败时，回退到原图
+  const filename = event.target.alt || event.target.dataset.filename
+  const currentSrc = event.target.src
+  const thumbnailUrl = api.getThumbnailUrl(filename)
+  const imageUrl = api.getImageUrl(filename)
+  
+  console.warn('[缩略图加载失败]', filename, currentSrc)
+  
+  // 如果当前是缩略图URL，尝试回退到原图
+  if (currentSrc.includes('/thumbnails/')) {
+    console.log('[回退到原图]', filename)
+    event.target.src = imageUrl
+  } else {
+    // 如果原图也失败，显示占位符
+    console.error('[原图也加载失败]', filename)
+    event.target.style.opacity = '0.3'
+    event.target.style.filter = 'grayscale(100%)'
+  }
+}
+
+const handleImageLoad = () => {
+  // 图片加载成功的回调（可以用于加载动画等）
+}
+
 // 生命周期
 onMounted(async () => {
+  console.log('[应用已挂载]')
   await loadConfig()
   await loadImages()
+  console.log('[初始化完成]')
 })
 </script>
 
@@ -1171,12 +1224,34 @@ onMounted(async () => {
   overflow: hidden;
   background: #f5f5f7;
   border: 1px solid #e5e5e7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .image-thumbnail img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+  color: #999;
+}
+
+.thumbnail-placeholder svg {
+  width: 30px;
+  height: 30px;
+  opacity: 0.5;
 }
 
 .image-info {
@@ -1201,6 +1276,35 @@ onMounted(async () => {
   background: #f5f6fa;
 }
 
+.debug-info {
+  background: #f5f5f7;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.debug-filename {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.debug-status,
+.debug-zoom {
+  flex-shrink: 0;
+  padding: 0 6px;
+  background: #e4e7ed;
+  border-radius: 2px;
+}
+
 .empty-state {
   display: flex;
   justify-content: center;
@@ -1217,6 +1321,24 @@ onMounted(async () => {
 @media (max-width: 1400px) {
   .annotation-workspace {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .card-header {
+    padding: 12px 16px;
+  }
+  
+  .card-header .card-title {
+    font-size: 14px;
+  }
+  
+  .card-header .zoom-controls .el-button span:not(.el-icon) {
+    display: none;
+  }
+  
+  .card-header .zoom-controls .el-button {
+    padding: 8px;
   }
 }
 
@@ -1243,6 +1365,25 @@ onMounted(async () => {
   padding: 16px 20px;
   background: #ffffff;
   border-bottom: 1px solid #e4e7ed;
+  gap: 16px;
+  min-height: 60px;
+}
+
+.card-header .card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card-header .image-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .card-header span {
@@ -1252,9 +1393,14 @@ onMounted(async () => {
   font-size: 16px;
 }
 
+.card-header .zoom-controls {
+  flex-shrink: 0;
+}
+
 .card-header .el-icon {
   font-size: 20px;
   color: #667eea;
+  flex-shrink: 0;
 }
 
 .image-viewer-card {
