@@ -128,8 +128,15 @@ class ImageService:
         if not image_path.exists():
             raise FileNotFoundError(f"原始图片不存在: {filename}")
         
-        # 尝试获取或生成缩略图
-        thumbnail_path = self.generate_thumbnail(image_path)
+        # 缩略图统一使用 .jpg 格式
+        # 从原文件名中提取basename（不含扩展名）
+        basename = Path(filename).stem
+        thumbnail_filename = f"{basename}_thumb.jpg"
+        thumbnail_path = self.thumbnails_dir / thumbnail_filename
+        
+        # 如果缩略图不存在或过期，生成新的
+        if not thumbnail_path.exists() or thumbnail_path.stat().st_mtime < image_path.stat().st_mtime:
+            thumbnail_path = self.generate_thumbnail(image_path)
         
         # 如果生成失败，返回原图
         return thumbnail_path if thumbnail_path else image_path

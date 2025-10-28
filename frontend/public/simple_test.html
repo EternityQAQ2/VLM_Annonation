@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .image-thumbnail {
+            width: 60px;
+            height: 60px;
+            margin: 10px;
+            border: 2px solid red;
+            display: inline-block;
+        }
+        .image-thumbnail img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <h1>缩略图直接测试</h1>
+    
+    <div class="image-thumbnail">
+        <img src="http://localhost:9011/api/thumbnails/233.png" alt="233.png">
+    </div>
+    
+    <div class="image-thumbnail">
+        <img src="http://localhost:9011/api/thumbnails/0225BD8800770A98E104DFE2CEB2790F.png" alt="test">
+    </div>
+    
+    <div class="image-thumbnail">
+        <img src="http://localhost:9011/api/thumbnails/02A3BB5ACE950540C98A718BFA2F1295.png" alt="test2">
+    </div>
+</body>
+</html>

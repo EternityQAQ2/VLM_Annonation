@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>缩略图测试</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .test-item { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        img { max-width: 200px; border: 2px solid green; }
+        .error { border-color: red !important; }
+    </style>
+</head>
+<body>
+    <h1>缩略图加载测试</h1>
+    <div id="results"></div>
+    
+    <script>
+        const images = [
+            '0225BD8800770A98E104DFE2CEB2790F.png',
+            '02A3BB5ACE950540C98A718BFA2F1295.png',
+            '233.png',
+            '402AA9216D8A7952681444F3EFC29763.png',
+            '4DBD20973A5F373B7A98E2A7D341D7A1.png'
+        ];
+        
+        const container = document.getElementById('results');
+        
+        images.forEach(filename => {
+            const div = document.createElement('div');
+            div.className = 'test-item';
+            
+            const title = document.createElement('h3');
+            title.textContent = filename;
+            div.appendChild(title);
+            
+            const url = `http://localhost:9011/api/thumbnails/${filename}`;
+            const urlDisplay = document.createElement('p');
+            urlDisplay.textContent = 'URL: ' + url;
+            div.appendChild(urlDisplay);
+            
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = filename;
+            
+            const status = document.createElement('p');
+            status.textContent = '加载中...';
+            div.appendChild(status);
+            
+            img.onload = () => {
+                status.textContent = `✅ 成功加载 (${img.naturalWidth}x${img.naturalHeight})`;
+                status.style.color = 'green';
+            };
+            
+            img.onerror = () => {
+                status.textContent = '❌ 加载失败';
+                status.style.color = 'red';
+                img.classList.add('error');
+            };
+            
+            div.appendChild(img);
+            container.appendChild(div);
+        });
+    </script>
+</body>
+</html>

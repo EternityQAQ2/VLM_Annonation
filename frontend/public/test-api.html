@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .thumbnail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .thumbnail-item {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .thumbnail-item img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        .thumbnail-name {
+            margin-top: 8px;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 API 连接测试</h1>
+
+    <div class="test-section">
+        <h2>1. 测试后端API连接</h2>
+        <button onclick="testBackendConnection()">测试连接</button>
+        <div id="connection-result" class="test-result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. 获取图片列表</h2>
+        <button onclick="testGetImages()">获取图片</button>
+        <div id="images-result" class="test-result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. 测试缩略图加载</h2>
+        <button onclick="testThumbnails()">加载缩略图</button>
+        <div id="thumbnails-result" class="test-result" style="display:none;"></div>
+        <div id="thumbnails-grid" class="thumbnail-grid"></div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'http://localhost:9011/api';
+
+        async function testBackendConnection() {
+            const resultDiv = document.getElementById('connection-result');
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = '正在测试...';
+            resultDiv.className = 'test-result';
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/config`);
+                const data = await response.json();
+                
+                resultDiv.className = 'test-result success';
+                resultDiv.innerHTML = `
+                    ✅ 连接成功！<br>
+                    状态码: ${response.status}<br>
+                    响应时间: ${Date.now()}<br>
+                    图片目录: ${data.app_config?.images_dir || 'N/A'}<br>
+                    标注目录: ${data.app_config?.annotations_dir || 'N/A'}
+                `;
+            } catch (error) {
+                resultDiv.className = 'test-result error';
+                resultDiv.innerHTML = `
+                    ❌ 连接失败！<br>
+                    错误: ${error.message}<br>
+                    <br>
+                    <strong>可能的原因：</strong><br>
+                    1. 端口 9011 没有正确映射到容器的 5000 端口<br>
+                    2. 防火墙阻止了访问<br>
+                    3. 后端服务未运行<br>
+                    <br>
+                    请检查 Docker 容器端口映射：<br>
+                    <code>docker ps</code> 应该显示 <code>0.0.0.0:9011->5000/tcp</code>
+                `;
+            }
+        }
+
+        async function testGetImages() {
+            const resultDiv = document.getElementById('images-result');
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = '正在获取图片列表...';
+            resultDiv.className = 'test-result';
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/images`);
+                const data = await response.json();
+                
+                resultDiv.className = 'test-result success';
+                resultDiv.innerHTML = `
+                    ✅ 成功获取图片列表！<br>
+                    图片数量: ${data.images?.length || 0}<br>
+                    前3张: ${data.images?.slice(0, 3).map(img => img.name).join(', ')}
+                `;
+
+                // 保存图片列表供缩略图测试使用
+                window.testImages = data.images || [];
+            } catch (error) {
+                resultDiv.className = 'test-result error';
+                resultDiv.innerHTML = `❌ 获取失败！<br>错误: ${error.message}`;
+            }
+        }
+
+        async function testThumbnails() {
+            const resultDiv = document.getElementById('thumbnails-result');
+            const gridDiv = document.getElementById('thumbnails-grid');
+            
+            if (!window.testImages || window.testImages.length === 0) {
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'test-result error';
+                resultDiv.textContent = '❌ 请先点击"获取图片"按钮';
+                return;
+            }
+
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = '正在加载缩略图...';
+            resultDiv.className = 'test-result';
+            gridDiv.innerHTML = '';
+
+            const images = window.testImages.slice(0, 12); // 只测试前12张
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const image of images) {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'thumbnail-item';
+
+                const img = document.createElement('img');
+                const thumbnailUrl = `${BACKEND_URL}/thumbnails/${encodeURIComponent(image.name)}`;
+                
+                img.onload = () => {
+                    successCount++;
+                    updateResult();
+                };
+                
+                img.onerror = () => {
+                    errorCount++;
+                    img.style.border = '2px solid red';
+                    updateResult();
+                };
+
+                img.src = thumbnailUrl;
+                img.alt = image.name;
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'thumbnail-name';
+                nameDiv.textContent = image.name;
+
+                itemDiv.appendChild(img);
+                itemDiv.appendChild(nameDiv);
+                gridDiv.appendChild(itemDiv);
+            }
+
+            function updateResult() {
+                const total = images.length;
+                const progress = successCount + errorCount;
+                
+                if (progress === total) {
+                    if (successCount === total) {
+                        resultDiv.className = 'test-result success';
+                        resultDiv.textContent = `✅ 所有缩略图加载成功！(${successCount}/${total})`;
+                    } else {
+                        resultDiv.className = 'test-result error';
+                        resultDiv.innerHTML = `
+                            ⚠️ 部分缩略图加载失败<br>
+                            成功: ${successCount}<br>
+                            失败: ${errorCount}<br>
+                            总计: ${total}<br>
+                            <br>
+                            请检查浏览器控制台(F12)查看详细错误
+                        `;
+                    }
+                }
+            }
+        }
+
+        // 页面加载时自动测试连接
+        window.onload = () => {
+            console.log('测试页面已加载');
+            console.log('后端URL:', BACKEND_URL);
+        };
+    </script>
+</body>
+</html>

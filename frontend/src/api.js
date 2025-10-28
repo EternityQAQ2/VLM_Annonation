@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: 'http://localhost:9011/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -44,14 +44,14 @@ export default {
   
   // 获取图片URL
   getImageUrl(filename) {
-    // 始终使用相对路径，通过Vite代理转发
-    return `/api/images/${encodeURIComponent(filename)}`
+    // 直接使用后端端口
+    return `http://localhost:9011/api/images/${encodeURIComponent(filename)}`
   },
   
   // 获取缩略图URL
   getThumbnailUrl(filename) {
-    // 始终使用相对路径，通过Vite代理转发
-    return `/api/thumbnails/${encodeURIComponent(filename)}`
+    // 直接使用后端端口
+    return `http://localhost:9011/api/thumbnails/${encodeURIComponent(filename)}`
   },
   
   // 获取标注数据

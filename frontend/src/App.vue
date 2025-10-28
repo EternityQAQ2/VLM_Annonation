@@ -4,7 +4,7 @@
       <!-- 头部 -->
       <el-header class="app-header">
         <div class="header-content">
-          <h1><el-icon><PictureFilled /></el-icon> VLM Annotation</h1>
+          <h1><el-icon><PictureFilled /></el-icon> VLM Annotation <span class="author-info">by LINXAURA</span></h1>
           <div class="header-actions">
             <el-button type="primary" @click="openSettings" :icon="Setting">
               设置
@@ -110,6 +110,9 @@
                 <div class="card-header">
                   <span><el-icon><Edit /></el-icon> 标注信息</span>
                   <div>
+                    <el-button type="primary" @click="applyToAllImages" :icon="CopyDocument" :disabled="!annotation">
+                      应用到所有图片
+                    </el-button>
                     <el-button type="success" @click="saveAnnotation" :icon="Check">
                       保存标注
                     </el-button>
@@ -280,7 +283,7 @@
 import { ref, computed, onMounted } from 'vue'
 import {
   Picture, PictureFilled, Edit, Download, Refresh, Search,
-  ZoomIn, ZoomOut, RefreshLeft, Check, CircleCheck, CircleClose, FolderOpened, Setting, Loading, Document, Delete, Plus, Upload
+  ZoomIn, ZoomOut, RefreshLeft, Check, CircleCheck, CircleClose, FolderOpened, Setting, Loading, Document, Delete, Plus, Upload, CopyDocument
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from './api'
@@ -409,9 +412,7 @@ const getImageUrl = (filename) => {
 }
 
 const getThumbnailUrl = (filename) => {
-  const url = api.getThumbnailUrl(filename)
-  console.log('[缩略图URL]', filename, '->', url)
-  return url
+  return api.getThumbnailUrl(filename)
 }
 
 const saveAnnotation = async () => {
@@ -423,6 +424,56 @@ const saveAnnotation = async () => {
     if (img) img.annotated = true
   } catch (error) {
     ElMessage.error('保存失败: ' + error.message)
+  }
+}
+
+// 应用当前配置到所有图片
+const applyToAllImages = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要将当前标注配置应用到所有 ${images.value.length} 张图片吗？此操作会覆盖所有图片的现有标注。`,
+      '批量应用配置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    const currentAnnotation = JSON.parse(JSON.stringify(annotation.value))
+    let successCount = 0
+    let failCount = 0
+    
+    // 显示进度提示
+    const loading = ElMessage({
+      message: '正在应用配置...',
+      type: 'info',
+      duration: 0
+    })
+    
+    for (const image of images.value) {
+      try {
+        await api.saveAnnotation(image.name, currentAnnotation)
+        successCount++
+        // 更新标注状态
+        image.annotated = true
+      } catch (error) {
+        console.error(`应用到 ${image.name} 失败:`, error)
+        failCount++
+      }
+    }
+    
+    loading.close()
+    
+    if (failCount === 0) {
+      ElMessage.success(`成功应用配置到 ${successCount} 张图片`)
+    } else {
+      ElMessage.warning(`完成：成功 ${successCount} 张，失败 ${failCount} 张`)
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('批量应用失败: ' + error.message)
+    }
   }
 }
 
@@ -935,17 +986,27 @@ const handleThumbnailError = (event) => {
   const thumbnailUrl = api.getThumbnailUrl(filename)
   const imageUrl = api.getImageUrl(filename)
   
-  console.warn('[缩略图加载失败]', filename, currentSrc)
+  console.warn('[缩略图加载失败]', {
+    filename,
+    currentSrc,
+    thumbnailUrl,
+    imageUrl,
+    isThumbnailUrl: currentSrc.includes('/thumbnails/')
+  })
   
   // 如果当前是缩略图URL，尝试回退到原图
   if (currentSrc.includes('/thumbnails/')) {
-    console.log('[回退到原图]', filename)
+    console.log('[回退到原图]', filename, imageUrl)
     event.target.src = imageUrl
+    // 移除任何错误样式
+    event.target.style.opacity = '1'
+    event.target.style.filter = 'none'
   } else {
-    // 如果原图也失败，显示占位符
+    // 如果原图也失败，显示占位符但不要完全隐藏
     console.error('[原图也加载失败]', filename)
-    event.target.style.opacity = '0.3'
-    event.target.style.filter = 'grayscale(100%)'
+    // 不再设置低透明度，而是显示明显的错误状态
+    event.target.style.border = '2px solid red'
+    event.target.style.background = '#ffebee'
   }
 }
 
@@ -1091,6 +1152,13 @@ onMounted(async () => {
   color: #667eea;
 }
 
+.app-header h1 .author-info {
+  font-size: 14px;
+  font-weight: 400;
+  color: #909399;
+  margin-left: 8px;
+}
+
 .header-actions {
   display: flex;
   gap: 12px;
@@ -1217,21 +1285,26 @@ onMounted(async () => {
 }
 
 .image-thumbnail {
-  width: 60px;
-  height: 60px;
+  width: 60px !important;
+  height: 60px !important;
+  min-width: 60px !important;
+  min-height: 60px !important;
   margin-right: 10px;
   border-radius: 6px;
   overflow: hidden;
   background: #f5f5f7;
   border: 1px solid #e5e5e7;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .image-thumbnail img {
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   object-fit: cover;
   display: block !important;
   opacity: 1 !important;
