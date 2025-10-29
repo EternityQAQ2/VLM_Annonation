@@ -112,3 +112,52 @@ class AnnotationService:
                 obj[field_name] = default_value
         
         return obj
+    
+    def get_annotation_summary(self, image_name):
+        """
+        获取标注摘要信息
+        提取关键字段：图片路径、overall_status、defect_categories
+        
+        Args:
+            image_name: 图片文件名
+            
+        Returns:
+            dict: 摘要信息
+        """
+        try:
+            annotation = self.get_annotation(image_name)
+            
+            # 提取摘要信息
+            summary = {
+                "image_path": annotation.get("image_path", f"images/{image_name}"),
+                "overall_status": None,
+                "defects": []
+            }
+            
+            # 查找 overall_status（可能在不同层级）
+            if "overall_status" in annotation:
+                summary["overall_status"] = annotation["overall_status"]
+            
+            # 查找 defect_categories
+            defect_categories = annotation.get("defect_categories", [])
+            
+            # 提取每个缺陷类别的简要信息
+            for category in defect_categories:
+                if isinstance(category, dict):
+                    defect_info = {
+                        "number": category.get("number"),
+                        "category": category.get("category"),
+                        "compliance": category.get("compliance"),
+                        "result": category.get("result", "")
+                    }
+                    summary["defects"].append(defect_info)
+            
+            return summary
+            
+        except Exception as e:
+            print(f"[错误] 获取标注摘要失败 {image_name}: {e}")
+            return {
+                "image_path": f"images/{image_name}",
+                "overall_status": None,
+                "defects": []
+            }

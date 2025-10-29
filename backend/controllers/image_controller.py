@@ -46,3 +46,14 @@ class ImageController:
                 return send_from_directory(image_path.parent, image_path.name)
             except:
                 return jsonify({"error": str(e)}), 500
+    
+    def delete_image(self, filename):
+        """删除图片及相关文件"""
+        try:
+            success, message = self.image_service.delete_image(filename)
+            if success:
+                return jsonify({"success": True, "message": message})
+            else:
+                return jsonify({"success": False, "error": message}), 400
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500

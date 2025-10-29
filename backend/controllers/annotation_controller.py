@@ -39,3 +39,12 @@ class AnnotationController:
             return jsonify({"annotations": annotations})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+    
+    def get_annotation_summary(self, image_name):
+        """获取标注摘要"""
+        try:
+            summary = self.annotation_service.get_annotation_summary(image_name)
+            return jsonify(summary)
+        except Exception as e:
+            print(f"[错误] 获取标注摘要失败: {str(e)}")
+            return jsonify({"error": str(e)}), 500

@@ -81,6 +81,10 @@ def create_app():
     def serve_thumbnail(filename):
         return image_controller.serve_thumbnail(filename)
     
+    @app.route('/api/images/<path:filename>', methods=['DELETE'])
+    def delete_image(filename):
+        return image_controller.delete_image(filename)
+    
     # 标注相关路由
     @app.route('/api/annotations/<path:image_name>', methods=['GET'])
     def get_annotation(image_name):
@@ -89,6 +93,10 @@ def create_app():
     @app.route('/api/annotations/<path:image_name>', methods=['POST'])
     def save_annotation(image_name):
         return annotation_controller.save_annotation(image_name)
+    
+    @app.route('/api/annotations/<path:image_name>/summary', methods=['GET'])
+    def get_annotation_summary(image_name):
+        return annotation_controller.get_annotation_summary(image_name)
     
     @app.route('/api/annotations', methods=['GET'])
     def get_all_annotations():

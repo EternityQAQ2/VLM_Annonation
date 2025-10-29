@@ -2,7 +2,6 @@
 图片管理服务
 """
 import os
-import imghdr
 from pathlib import Path
 from datetime import datetime
 from PIL import Image
@@ -53,14 +52,14 @@ class ImageService:
     def _is_valid_image_file(self, file_path):
         """检查文件是否为有效的图片"""
         try:
-            # 使用 imghdr 检测真实的图片类型
-            image_type = imghdr.what(file_path)
-            if image_type is None:
-                # 如果 imghdr 无法识别，检查文件大小
-                # 太小的文件（<100字节）很可能不是真正的图片
-                if file_path.stat().st_size < 100:
-                    return False
-            return image_type is not None or file_path.stat().st_size >= 100
+            # 检查文件大小（太小的文件很可能不是真正的图片）
+            if file_path.stat().st_size < 100:
+                return False
+            
+            # 使用 PIL 尝试打开图片来验证
+            with Image.open(file_path) as img:
+                img.verify()  # 验证图片完整性
+            return True
         except Exception as e:
             print(f"[错误] 检查图片文件失败 {file_path.name}: {e}")
             return False
@@ -164,3 +163,41 @@ class ImageService:
             return False, f"不支持的文件格式，支持的格式: {', '.join(self.SUPPORTED_EXTENSIONS)}"
         
         return True, "有效"
+    
+    def delete_image(self, filename):
+        """
+        删除图片及其相关文件（标注JSON和缩略图）
+        
+        Args:
+            filename: 图片文件名
+            
+        Returns:
+            tuple: (成功标志, 消息)
+        """
+        try:
+            # 1. 删除原始图片
+            image_path = self.images_dir / filename
+            if image_path.exists():
+                image_path.unlink()
+                print(f"[信息] 已删除图片: {filename}")
+            else:
+                return False, f"图片不存在: {filename}"
+            
+            # 2. 删除标注JSON文件
+            annotation_path = self.annotations_dir / f"{image_path.stem}.json"
+            if annotation_path.exists():
+                annotation_path.unlink()
+                print(f"[信息] 已删除标注文件: {annotation_path.name}")
+            
+            # 3. 删除缩略图
+            thumbnail_path = self.thumbnails_dir / f"{image_path.stem}_thumb.jpg"
+            if thumbnail_path.exists():
+                thumbnail_path.unlink()
+                print(f"[信息] 已删除缩略图: {thumbnail_path.name}")
+            
+            return True, f"成功删除图片及相关文件: {filename}"
+            
+        except Exception as e:
+            error_msg = f"删除图片失败 {filename}: {str(e)}"
+            print(f"[错误] {error_msg}")
+            return False, error_msg

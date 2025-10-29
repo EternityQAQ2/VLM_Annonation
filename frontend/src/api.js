@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://localhost:9011/api',
+  baseURL: '/api',  // 使用相对路径，自动适配开发和生产环境
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -42,21 +42,29 @@ export default {
     return api.get('/images')
   },
   
-  // 获取图片URL
+  // 获取图片URL（使用相对路径，自动适配开发和生产环境）
   getImageUrl(filename) {
-    // 直接使用后端端口
-    return `http://localhost:9011/api/images/${encodeURIComponent(filename)}`
+    return `/api/images/${encodeURIComponent(filename)}`
   },
   
-  // 获取缩略图URL
+  // 获取缩略图URL（使用相对路径，自动适配开发和生产环境）
   getThumbnailUrl(filename) {
-    // 直接使用后端端口
-    return `http://localhost:9011/api/thumbnails/${encodeURIComponent(filename)}`
+    return `/api/thumbnails/${encodeURIComponent(filename)}`
+  },
+  
+  // 删除图片
+  deleteImage(filename) {
+    return api.delete(`/images/${encodeURIComponent(filename)}`)
   },
   
   // 获取标注数据
   getAnnotation(imageName) {
     return api.get(`/annotations/${imageName}`)
+  },
+  
+  // 获取标注摘要
+  getAnnotationSummary(imageName) {
+    return api.get(`/annotations/${imageName}/summary`)
   },
   
   // 保存标注数据

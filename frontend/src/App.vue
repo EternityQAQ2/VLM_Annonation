@@ -85,11 +85,21 @@
                     <el-icon><Picture /></el-icon> 
                     <span class="image-name-text">图片预览 - {{ currentImage.name }}</span>
                   </span>
-                  <el-button-group size="small" class="zoom-controls">
-                    <el-button @click="zoomIn" :icon="ZoomIn">放大</el-button>
-                    <el-button @click="zoomOut" :icon="ZoomOut">缩小</el-button>
-                    <el-button @click="resetZoom" :icon="RefreshLeft">重置</el-button>
-                  </el-button-group>
+                  <div style="display: flex; gap: 10px;">
+                    <el-button 
+                      type="danger" 
+                      size="small" 
+                      @click="deleteCurrentImage"
+                      :icon="Delete"
+                    >
+                      删除图片
+                    </el-button>
+                    <el-button-group size="small" class="zoom-controls">
+                      <el-button @click="zoomIn" :icon="ZoomIn">放大</el-button>
+                      <el-button @click="zoomOut" :icon="ZoomOut">缩小</el-button>
+                      <el-button @click="resetZoom" :icon="RefreshLeft">重置</el-button>
+                    </el-button-group>
+                  </div>
                 </div>
               </template>
               <div class="image-viewer">
@@ -101,6 +111,51 @@
                   @error="handleImageError"
                   @load="handleImageLoad"
                 />
+              </div>
+              
+              <!-- 标注摘要 -->
+              <div v-if="annotationSummary" class="annotation-summary">
+                <div class="summary-header">
+                  <el-icon><DocumentChecked /></el-icon>
+                  <span>标注摘要</span>
+                </div>
+                <div class="summary-content">
+                  <div class="summary-item">
+                    <span class="summary-label">图片路径:</span>
+                    <span class="summary-value">{{ annotationSummary.image_path }}</span>
+                  </div>
+                  <div v-if="annotationSummary.overall_status" class="summary-item">
+                    <span class="summary-label">检测结果:</span>
+                    <el-tag 
+                      :type="annotationSummary.overall_status === 'PASS' ? 'success' : 'danger'"
+                      size="small"
+                    >
+                      {{ annotationSummary.overall_status }}
+                    </el-tag>
+                  </div>
+                  <div v-if="annotationSummary.defects && annotationSummary.defects.length > 0" class="summary-defects">
+                    <div class="summary-label">缺陷详情:</div>
+                    <div 
+                      v-for="defect in annotationSummary.defects" 
+                      :key="defect.number"
+                      class="defect-item"
+                    >
+                      <div class="defect-header">
+                        <span class="defect-number">{{ defect.number }}.</span>
+                        <span class="defect-category">{{ defect.category }}</span>
+                        <el-tag 
+                          :type="defect.compliance ? 'success' : 'warning'"
+                          size="small"
+                        >
+                          {{ defect.compliance ? '✓' : '✗' }}
+                        </el-tag>
+                      </div>
+                      <div v-if="defect.result" class="defect-result">
+                        {{ defect.result }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </el-card>
 
@@ -283,7 +338,7 @@
 import { ref, computed, onMounted } from 'vue'
 import {
   Picture, PictureFilled, Edit, Download, Refresh, Search,
-  ZoomIn, ZoomOut, RefreshLeft, Check, CircleCheck, CircleClose, FolderOpened, Setting, Loading, Document, Delete, Plus, Upload, CopyDocument
+  ZoomIn, ZoomOut, RefreshLeft, Check, CircleCheck, CircleClose, FolderOpened, Setting, Loading, Document, Delete, Plus, Upload, CopyDocument, DocumentChecked
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from './api'
@@ -294,6 +349,7 @@ import DynamicFormField from './DynamicFormField.vue'
 const images = ref([])
 const currentImage = ref(null)
 const annotation = ref(null)
+const annotationSummary = ref(null)  // 标注摘要
 const config = ref(null)
 const searchText = ref('')
 const zoomLevel = ref(1)
@@ -394,13 +450,23 @@ const selectImage = async (image) => {
   
   // 清空当前标注，防止旧数据渲染导致错误
   annotation.value = null
+  annotationSummary.value = null
   
   // 设置当前图片
   currentImage.value = image
   zoomLevel.value = 1
   
   try {
+    // 加载标注数据和摘要
     annotation.value = await api.getAnnotation(image.name)
+    
+    // 加载标注摘要
+    try {
+      annotationSummary.value = await api.getAnnotationSummary(image.name)
+    } catch (error) {
+      console.error('加载标注摘要失败:', error)
+      // 摘要加载失败不影响主流程
+    }
   } catch (error) {
     console.error('加载标注数据失败:', error)
     ElMessage.error('加载标注数据失败: ' + (error.message || '未知错误'))
@@ -639,6 +705,63 @@ const zoomOut = () => {
 
 const resetZoom = () => {
   zoomLevel.value = 1
+}
+
+// 删除当前图片
+const deleteCurrentImage = async () => {
+  if (!currentImage.value) {
+    ElMessage.warning('没有选中的图片')
+    return
+  }
+  
+  try {
+    // 确认删除
+    await ElMessageBox.confirm(
+      `确定要删除图片 "${currentImage.value.name}" 及其相关文件吗？此操作不可恢复！`,
+      '删除确认',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+    
+    // 执行删除
+    const result = await api.deleteImage(currentImage.value.name)
+    
+    if (result.success) {
+      ElMessage.success('删除成功')
+      
+      // 记录当前图片索引
+      const currentIndex = images.value.findIndex(img => img.name === currentImage.value.name)
+      
+      // 重新加载图片列表
+      await loadImages()
+      
+      // 选择下一张图片
+      if (images.value.length > 0) {
+        // 如果有下一张，选择下一张；否则选择前一张；否则清空
+        const nextIndex = Math.min(currentIndex, images.value.length - 1)
+        if (nextIndex >= 0) {
+          selectImage(images.value[nextIndex])
+        } else {
+          currentImage.value = null
+          annotation.value = null
+        }
+      } else {
+        currentImage.value = null
+        annotation.value = null
+      }
+    } else {
+      ElMessage.error(result.error || '删除失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除图片失败:', error)
+      ElMessage.error(error.message || '删除图片时发生错误')
+    }
+  }
 }
 
 const openSettings = async () => {
@@ -1502,6 +1625,90 @@ onMounted(async () => {
   transition: transform 0.3s;
   cursor: zoom-in;
   border-radius: 4px;
+}
+
+/* 标注摘要样式 */
+.annotation-summary {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.summary-label {
+  font-weight: 500;
+  color: #666;
+  min-width: 80px;
+}
+
+.summary-value {
+  color: #1d1d1f;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.summary-defects {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.defect-item {
+  padding: 8px 12px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e8e8e8;
+  font-size: 12px;
+}
+
+.defect-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.defect-number {
+  font-weight: 600;
+  color: #666;
+  min-width: 20px;
+}
+
+.defect-category {
+  font-weight: 500;
+  color: #1d1d1f;
+  flex: 1;
+}
+
+.defect-result {
+  margin-top: 4px;
+  padding-left: 28px;
+  color: #666;
+  line-height: 1.5;
 }
 
 .section-title {
