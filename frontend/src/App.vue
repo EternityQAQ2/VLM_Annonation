@@ -120,21 +120,211 @@
                   <span>标注摘要</span>
                 </div>
                 <div class="summary-content">
+                  <!-- 图片路径 -->
                   <div class="summary-item">
                     <span class="summary-label">图片路径:</span>
                     <span class="summary-value">{{ annotationSummary.image_path }}</span>
                   </div>
-                  <div v-if="annotationSummary.overall_status" class="summary-item">
-                    <span class="summary-label">检测结果:</span>
+                  
+                  <!-- 动态显示所有顶级字段 -->
+                  <div 
+                    v-for="(fieldData, fieldName) in annotationSummary.fields" 
+                    :key="fieldName"
+                    class="summary-item"
+                    :class="{ 'summary-item-array': fieldData.type === 'array' }"
+                  >
+                    <span class="summary-label">{{ fieldData.description || fieldName }}:</span>
+                    
+                    <!-- 根据字段类型渲染不同的显示 -->
+                    <!-- 字符串类型 - 特殊处理 overall_status -->
                     <el-tag 
-                      :type="annotationSummary.overall_status === 'PASS' ? 'success' : 'danger'"
+                      v-if="fieldData.type === 'string' && fieldName === 'overall_status'"
+                      :type="fieldData.value === 'PASS' ? 'success' : 'danger'"
                       size="small"
                     >
-                      {{ annotationSummary.overall_status }}
+                      {{ fieldData.value }}
                     </el-tag>
+                    
+                    <!-- 普通字符串 -->
+                    <span v-else-if="fieldData.type === 'string'" class="summary-value">
+                      {{ fieldData.value }}
+                    </span>
+                    
+                    <!-- 数字类型 - 特殊处理 confidence_score -->
+                    <el-tag 
+                      v-else-if="fieldData.type === 'number' && fieldName === 'confidence_score'"
+                      type="info" 
+                      size="small"
+                    >
+                      {{ (fieldData.value * 100).toFixed(1) }}%
+                    </el-tag>
+                    
+                    <!-- 普通数字 -->
+                    <span v-else-if="fieldData.type === 'number'" class="summary-value">
+                      {{ fieldData.value }}
+                    </span>
+                    
+                    <!-- 布尔类型 -->
+                    <el-tag 
+                      v-else-if="fieldData.type === 'boolean'"
+                      :type="fieldData.value ? 'success' : 'danger'"
+                      size="small"
+                    >
+                      {{ fieldData.value ? 'TRUE' : 'FALSE' }}
+                    </el-tag>
+                    
+                    <!-- 对象类型 -->
+                    <span v-else-if="fieldData.type === 'object'" class="summary-value">
+                      {{ JSON.stringify(fieldData.value) }}
+                    </span>
+                    
+                    <!-- 数组类型 - 超紧凑的内联展示 -->
+                    <div v-else-if="fieldData.type === 'array'" class="summary-array-inline">
+                      <el-tag size="small" type="info">{{ fieldData.value.length }} 项</el-tag>
+                      <el-button 
+                        v-if="fieldData.value.length > 0"
+                        text 
+                        size="small" 
+                        @click="toggleArrayExpand(fieldName)"
+                        class="inline-expand-btn"
+                      >
+                        {{ expandedArrays[fieldName] ? '▲' : '▼' }}
+                      </el-button>
+                      
+                      <!-- 超紧凑展示：每项一行 -->
+                      <div v-if="expandedArrays[fieldName] && fieldData.array_items && fieldData.array_items.length > 0" 
+                           class="inline-items">
+                        <div 
+                          v-for="arrayItem in fieldData.array_items" 
+                          :key="arrayItem.index"
+                          class="inline-item"
+                        >
+                          <span class="item-num">#{{ arrayItem.index }}</span>
+                          <span class="item-content">
+                            <template v-if="typeof arrayItem.data === 'object' && !Array.isArray(arrayItem.data)">
+                              <span 
+                                v-for="(val, key, idx) in arrayItem.data" 
+                                :key="key"
+                                class="field-pair"
+                              >
+                                <template v-if="!Array.isArray(val) && typeof val !== 'object'">
+                                  <span class="k">{{ key }}</span>: 
+                                  <span v-if="typeof val === 'boolean'" class="v-bool">{{ val ? '✓' : '✗' }}</span>
+                                  <span v-else class="v">{{ val }}</span>
+                                  <span v-if="idx < Object.keys(arrayItem.data).length - 1" class="sep">, </span>
+                                </template>
+                                <template v-else-if="Array.isArray(val)">
+                                  <span class="k">{{ key }}</span>: 
+                                  <span class="nested-toggle" @click="toggleNestedArray(`${fieldName}_${arrayItem.index}_${key}`)">
+                                    [{{ val.length }}项{{ expandedArrays[`${fieldName}_${arrayItem.index}_${key}`] ? '▲' : '▼' }}]
+                                  </span>
+                                  <div v-if="expandedArrays[`${fieldName}_${arrayItem.index}_${key}`]" class="nested-block">
+                                    <div 
+                                      v-for="(nested, nIdx) in val" 
+                                      :key="nIdx"
+                                      class="nested-line"
+                                    >
+                                      <span class="n-num">#{{ nIdx + 1 }}</span>
+                                      <template v-if="typeof nested === 'object' && !Array.isArray(nested)">
+                                        <span 
+                                          v-for="(nVal, nKey, nKeyIdx) in nested" 
+                                          :key="nKey"
+                                          class="field-pair"
+                                        >
+                                          <template v-if="!Array.isArray(nVal) && typeof nVal !== 'object'">
+                                            <span class="k">{{ nKey }}</span>: 
+                                            <span class="v">{{ nVal }}</span>
+                                            <span v-if="nKeyIdx < Object.keys(nested).length - 1">, </span>
+                                          </template>
+                                          <template v-else-if="Array.isArray(nVal)">
+                                            <span class="k">{{ nKey }}</span>: 
+                                            <span class="nested-toggle" @click="toggleNestedArray(`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}`)">
+                                              [{{ nVal.length }}项{{ expandedArrays[`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}`] ? '▲' : '▼' }}]
+                                            </span>
+                                            <div v-if="expandedArrays[`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}`]" class="nested-block">
+                                              <div v-for="(deepItem, deepIdx) in nVal" :key="deepIdx" class="nested-line">
+                                                <span class="n-num">#{{ deepIdx + 1 }}</span>
+                                                <!-- 递归渲染对象字段 -->
+                                                <template v-if="typeof deepItem === 'object' && !Array.isArray(deepItem)">
+                                                  <span 
+                                                    v-for="(dVal, dKey, dKeyIdx) in deepItem" 
+                                                    :key="dKey"
+                                                    class="field-pair"
+                                                  >
+                                                    <template v-if="!Array.isArray(dVal) && typeof dVal !== 'object'">
+                                                      <span class="k">{{ dKey }}</span>: 
+                                                      <span v-if="typeof dVal === 'boolean'" class="v-bool">{{ dVal ? '✓' : '✗' }}</span>
+                                                      <span v-else class="v">{{ dVal }}</span>
+                                                      <span v-if="dKeyIdx < Object.keys(deepItem).length - 1">, </span>
+                                                    </template>
+                                                    <template v-else-if="Array.isArray(dVal)">
+                                                      <span class="k">{{ dKey }}</span>: 
+                                                      <span class="nested-toggle" @click="toggleNestedArray(`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}_${deepIdx}_${dKey}`)">
+                                                        [{{ dVal.length }}项{{ expandedArrays[`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}_${deepIdx}_${dKey}`] ? '▲' : '▼' }}]
+                                                      </span>
+                                                      <div v-if="expandedArrays[`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}_${deepIdx}_${dKey}`]" class="nested-block">
+                                                        <div v-for="(deeperItem, deeperIdx) in dVal" :key="deeperIdx" class="nested-line">
+                                                          <span class="n-num">#{{ deeperIdx + 1 }}</span>
+                                                          <span class="v">{{ typeof deeperItem === 'object' ? '[对象]' : deeperItem }}</span>
+                                                        </div>
+                                                      </div>
+                                                    </template>
+                                                    <template v-else>
+                                                      <span class="k">{{ dKey }}</span>: <span class="v-obj">{obj}</span>
+                                                    </template>
+                                                  </span>
+                                                </template>
+                                                <!-- 简单值 -->
+                                                <template v-else-if="Array.isArray(deepItem)">
+                                                  <span class="nested-toggle" @click="toggleNestedArray(`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}_${deepIdx}`)">
+                                                    [{{ deepItem.length }}项{{ expandedArrays[`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}_${deepIdx}`] ? '▲' : '▼' }}]
+                                                  </span>
+                                                  <div v-if="expandedArrays[`${fieldName}_${arrayItem.index}_${key}_${nIdx}_${nKey}_${deepIdx}`]" class="nested-block">
+                                                    <div v-for="(item5, idx5) in deepItem" :key="idx5" class="nested-line">
+                                                      <span class="n-num">#{{ idx5 + 1 }}</span>
+                                                      <span class="v">{{ typeof item5 === 'object' ? '[对象]' : item5 }}</span>
+                                                    </div>
+                                                  </div>
+                                                </template>
+                                                <template v-else>
+                                                  <span class="v">{{ deepItem }}</span>
+                                                </template>
+                                              </div>
+                                            </div>
+                                          </template>
+                                          <template v-else>
+                                            <span class="k">{{ nKey }}</span>: <span class="v-obj">{obj}</span>
+                                          </template>
+                                        </span>
+                                      </template>
+                                      <template v-else>
+                                        <span class="v">{{ nested }}</span>
+                                      </template>
+                                    </div>
+                                  </div>
+                                </template>
+                                <template v-else>
+                                  <span class="k">{{ key }}</span>: <span class="v-obj">{obj}</span>
+                                </template>
+                              </span>
+                            </template>
+                            <template v-else>
+                              {{ arrayItem.data }}
+                            </template>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- 其他类型 -->
+                    <span v-else class="summary-value">
+                      {{ fieldData.value }}
+                    </span>
                   </div>
+                  
+                  <!-- 缺陷详情（特殊处理 defect_categories - 向后兼容） -->
                   <div v-if="annotationSummary.defects && annotationSummary.defects.length > 0" class="summary-defects">
-                    <div class="summary-label">缺陷详情:</div>
+                    <div class="summary-label">缺陷详情 (旧版格式):</div>
                     <div 
                       v-for="defect in annotationSummary.defects" 
                       :key="defect.number"
@@ -403,6 +593,9 @@ const settings = ref({
   ]
 })
 
+// 数组展开状态管理
+const expandedArrays = ref({})
+
 // 计算属性
 const filteredImages = computed(() => {
   if (!searchText.value) return images.value
@@ -483,14 +676,120 @@ const getThumbnailUrl = (filename) => {
 
 const saveAnnotation = async () => {
   try {
+    // 验证必填字段
+    const validationErrors = validateRequiredFields(annotation.value, config.value?.app_config?.json_fields || [])
+    
+    if (validationErrors.length > 0) {
+      // 显示验证错误
+      const errorMessage = '以下必填字段未填写：\n' + validationErrors.join('\n')
+      ElMessage.error({
+        message: errorMessage,
+        duration: 5000,
+        showClose: true
+      })
+      return
+    }
+    
     await api.saveAnnotation(currentImage.value.name, annotation.value)
     ElMessage.success('标注已保存')
+    
     // 更新图片列表中的标注状态
     const img = images.value.find(i => i.name === currentImage.value.name)
     if (img) img.annotated = true
+    
+    // 自动刷新标注摘要
+    try {
+      annotationSummary.value = await api.getAnnotationSummary(currentImage.value.name)
+      console.log('[标注摘要已更新]')
+    } catch (error) {
+      console.error('更新标注摘要失败:', error)
+    }
   } catch (error) {
     ElMessage.error('保存失败: ' + error.message)
   }
+}
+
+// 验证必填字段
+const validateRequiredFields = (data, fieldConfigs, parentPath = '') => {
+  const errors = []
+  
+  for (const fieldConfig of fieldConfigs) {
+    const fieldName = fieldConfig.name
+    const fieldPath = parentPath ? `${parentPath}.${fieldName}` : fieldName
+    const fieldValue = data[fieldName]
+    
+    // 检查必填字段
+    if (fieldConfig.required) {
+      if (fieldConfig.type === 'string') {
+        if (!fieldValue || fieldValue.trim() === '') {
+          errors.push(`• ${fieldConfig.description || fieldName}`)
+        }
+      } else if (fieldConfig.type === 'number') {
+        if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
+          errors.push(`• ${fieldConfig.description || fieldName}`)
+        }
+      } else if (fieldConfig.type === 'boolean') {
+        if (fieldValue === null || fieldValue === undefined) {
+          errors.push(`• ${fieldConfig.description || fieldName}`)
+        }
+      } else if (fieldConfig.type === 'array') {
+        if (!Array.isArray(fieldValue) || fieldValue.length === 0) {
+          errors.push(`• ${fieldConfig.description || fieldName}（至少需要一项）`)
+        } else {
+          // 验证数组中每一项的必填字段
+          fieldValue.forEach((item, index) => {
+            if (fieldConfig.children && fieldConfig.children.length > 0) {
+              const itemErrors = validateRequiredFields(
+                item, 
+                fieldConfig.children, 
+                `${fieldPath}[${index}]`
+              )
+              errors.push(...itemErrors)
+            }
+          })
+        }
+      } else if (fieldConfig.type === 'object') {
+        if (!fieldValue || typeof fieldValue !== 'object') {
+          errors.push(`• ${fieldConfig.description || fieldName}`)
+        } else if (fieldConfig.children && fieldConfig.children.length > 0) {
+          // 递归验证对象的子字段
+          const childErrors = validateRequiredFields(
+            fieldValue, 
+            fieldConfig.children, 
+            fieldPath
+          )
+          errors.push(...childErrors)
+        }
+      }
+    }
+    
+    // 即使不是必填，如果有值，也要验证其子字段（针对对象和数组）
+    if (!fieldConfig.required) {
+      if (fieldConfig.type === 'array' && Array.isArray(fieldValue) && fieldValue.length > 0) {
+        fieldValue.forEach((item, index) => {
+          if (fieldConfig.children && fieldConfig.children.length > 0) {
+            const itemErrors = validateRequiredFields(
+              item, 
+              fieldConfig.children, 
+              `${fieldPath}[${index}]`
+            )
+            errors.push(...itemErrors)
+          }
+        })
+      } else if (fieldConfig.type === 'object' && fieldValue && typeof fieldValue === 'object') {
+        if (fieldConfig.children && fieldConfig.children.length > 0) {
+          const childErrors = validateRequiredFields(
+            fieldValue, 
+            fieldConfig.children, 
+            fieldPath
+          )
+          errors.push(...childErrors)
+        }
+      }
+    }
+  }
+  
+  return errors
 }
 
 // 应用当前配置到所有图片
@@ -507,8 +806,6 @@ const applyToAllImages = async () => {
     )
     
     const currentAnnotation = JSON.parse(JSON.stringify(annotation.value))
-    let successCount = 0
-    let failCount = 0
     
     // 显示进度提示
     const loading = ElMessage({
@@ -517,19 +814,37 @@ const applyToAllImages = async () => {
       duration: 0
     })
     
-    for (const image of images.value) {
-      try {
-        await api.saveAnnotation(image.name, currentAnnotation)
-        successCount++
-        // 更新标注状态
-        image.annotated = true
-      } catch (error) {
-        console.error(`应用到 ${image.name} 失败:`, error)
-        failCount++
-      }
-    }
+    // 使用并发请求优化性能（每批10个）
+    const batchSize = 10
+    let successCount = 0
+    let failCount = 0
     
-    loading.close()
+    for (let i = 0; i < images.value.length; i += batchSize) {
+      const batch = images.value.slice(i, i + batchSize)
+      const promises = batch.map(image => 
+        api.saveAnnotation(image.name, currentAnnotation)
+          .then(() => {
+            successCount++
+            image.annotated = true
+            return { success: true, name: image.name }
+          })
+          .catch(error => {
+            console.error(`应用到 ${image.name} 失败:`, error)
+            failCount++
+            return { success: false, name: image.name, error }
+          })
+      )
+      
+      await Promise.all(promises)
+      
+      // 更新进度提示
+      loading.close()
+      ElMessage({
+        message: `进度: ${successCount + failCount}/${images.value.length}`,
+        type: 'info',
+        duration: 500
+      })
+    }
     
     if (failCount === 0) {
       ElMessage.success(`成功应用配置到 ${successCount} 张图片`)
@@ -546,8 +861,17 @@ const applyToAllImages = async () => {
 // 输出所有标注信息
 const exportAllAnnotations = async () => {
   try {
+    // 显示加载提示
+    const loading = ElMessage({
+      message: '正在加载标注数据...',
+      type: 'info',
+      duration: 0
+    })
+    
     const response = await api.getAllAnnotations()
     const annotations = response.annotations || []
+    
+    loading.close()
     
     if (annotations.length === 0) {
       ElMessage.warning('没有标注数据可以导出')
@@ -996,6 +1320,62 @@ const getDefaultValueForField = (fieldConfig) => {
     default:
       return null
   }
+}
+
+// 获取数组项字段的显示标签
+const getFieldLabel = (fieldKey, childrenConfig) => {
+  if (!childrenConfig || childrenConfig.length === 0) {
+    return fieldKey
+  }
+  
+  // 查找对应的子字段配置
+  const fieldConfig = childrenConfig.find(c => c.name === fieldKey)
+  if (fieldConfig && fieldConfig.description && fieldConfig.description.trim()) {
+    return fieldConfig.description
+  }
+  
+  return fieldKey
+}
+
+// 切换数组展开/收起状态
+const toggleArrayExpand = (fieldName) => {
+  expandedArrays.value[fieldName] = !expandedArrays.value[fieldName]
+}
+
+// 切换嵌套数组展开/收起状态
+const toggleNestedArray = (key) => {
+  expandedArrays.value[key] = !expandedArrays.value[key]
+}
+
+// 获取数组项的摘要信息（显示前2-3个关键字段）
+const getArrayItemSummary = (data, childrenConfig) => {
+  if (typeof data !== 'object' || Array.isArray(data)) {
+    return String(data)
+  }
+  
+  // 获取关键字段的优先级顺序
+  const priorityFields = ['name', 'title', 'category', 'type', 'status', 'number', 'id']
+  
+  // 找出关键字段
+  const keyFields = []
+  for (const field of priorityFields) {
+    if (field in data && data[field] !== null && data[field] !== undefined) {
+      const label = getFieldLabel(field, childrenConfig)
+      keyFields.push(`${label}: ${data[field]}`)
+      if (keyFields.length >= 2) break
+    }
+  }
+  
+  // 如果没有关键字段，取前2个字段
+  if (keyFields.length === 0) {
+    const entries = Object.entries(data).slice(0, 2)
+    entries.forEach(([key, value]) => {
+      const label = getFieldLabel(key, childrenConfig)
+      keyFields.push(`${label}: ${value}`)
+    })
+  }
+  
+  return keyFields.join(', ') || '(空)'
 }
 
 // 添加字段
@@ -1470,6 +1850,7 @@ onMounted(async () => {
   padding: 24px;
   overflow-y: auto;
   background: #f5f6fa;
+  height: 100%;
 }
 
 .debug-info {
@@ -1512,6 +1893,7 @@ onMounted(async () => {
   display: grid;
   gap: 24px;
   grid-template-columns: 1fr 1fr;
+  align-items: start;
 }
 
 @media (max-width: 1400px) {
@@ -1601,8 +1983,6 @@ onMounted(async () => {
 
 .image-viewer-card {
   height: fit-content;
-  position: sticky;
-  top: 0;
   border: 1px solid #d2d2d7;
   margin-top: 0px;
 }
@@ -1659,6 +2039,11 @@ onMounted(async () => {
   font-size: 13px;
 }
 
+.summary-item-array {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .summary-label {
   font-weight: 500;
   color: #666;
@@ -1669,6 +2054,206 @@ onMounted(async () => {
   color: #1d1d1f;
   font-family: 'Courier New', monospace;
   font-size: 12px;
+}
+
+/* 超紧凑内联数组展示 */
+.summary-array-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inline-expand-btn {
+  font-size: 11px;
+  padding: 0 4px;
+  height: 20px;
+  min-width: 24px;
+}
+
+.inline-items {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.inline-item {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+  border-left: 2px solid #e4e7ed;
+  padding-left: 8px;
+  margin-bottom: 2px;
+}
+
+.item-num {
+  font-weight: 600;
+  color: #667eea;
+  min-width: 22px;
+  flex-shrink: 0;
+}
+
+.item-content {
+  flex: 1;
+  color: #606266;
+  display: inline;
+}
+
+.field-pair {
+  display: inline;
+}
+
+.field-pair .k {
+  font-weight: 500;
+  color: #909399;
+}
+
+.field-pair .v {
+  color: #303133;
+}
+
+.field-pair .v-bool {
+  color: #67c23a;
+  font-weight: 600;
+}
+
+.field-pair .v-obj {
+  color: #909399;
+  font-style: italic;
+  font-size: 10px;
+}
+
+.field-pair .sep {
+  color: #dcdfe6;
+}
+
+/* 嵌套数组紧凑样式 */
+.nested-toggle {
+  display: inline-block;
+  cursor: pointer;
+  color: #409eff;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: #ecf5ff;
+  margin: 0 2px;
+  user-select: none;
+}
+
+.nested-toggle:hover {
+  background: #d9ecff;
+}
+
+.nested-block {
+  width: 100%;
+  margin-top: 2px;
+  margin-left: 16px;
+  padding-left: 8px;
+  border-left: 1px solid #e4e7ed;
+}
+
+.nested-line {
+  display: flex;
+  gap: 6px;
+  padding: 1px 0;
+  font-size: 10px;
+}
+
+.n-num {
+  font-weight: 600;
+  color: #909399;
+  min-width: 18px;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+/* 旧版兼容样式 - 保留但标记 */
+.summary-array {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.array-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.array-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.array-item-card {
+  background: white;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  padding: 10px 12px;
+  transition: all 0.2s ease;
+}
+
+.array-item-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.array-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.array-item-number {
+  font-weight: 600;
+  color: #667eea;
+  font-size: 13px;
+}
+
+.array-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.array-item-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.field-key {
+  font-weight: 500;
+  color: #666;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.field-value {
+  color: #1d1d1f;
+  flex: 1;
+  word-break: break-word;
+}
+
+.array-item-simple {
+  color: #1d1d1f;
+  font-size: 12px;
+}
+
+.nested-array,
+.nested-object {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #909399;
 }
 
 .summary-defects {
@@ -1746,6 +2331,14 @@ onMounted(async () => {
 .annotation-form-card {
   border: 1px solid #d2d2d7;
   margin-top: 0px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 140px);
+}
+
+.annotation-form-card :deep(.el-card__body) {
+  overflow-y: auto;
+  flex: 1;
 }
 
 .status-pass :deep(.el-radio-button__inner) {

@@ -1,7 +1,13 @@
 <template>
   <div :style="{ marginLeft: `${level * 20}px` }">
     <!-- 布尔类型 - 检查实际数据类型或配置类型 -->
-    <el-form-item v-if="getActualType() === 'boolean'" :label="fieldConfig.description || fieldConfig.name">
+    <el-form-item v-if="getActualType() === 'boolean'">
+      <template #label>
+        <span class="field-label">
+          <span v-if="fieldConfig.required" class="required-star">* </span>
+          {{ fieldConfig.description || fieldConfig.name }}
+        </span>
+      </template>
       <el-radio-group v-model="modelValue[fieldConfig.name]">
         <el-radio :label="true">
           <el-icon color="#67C23A"><CircleCheck /></el-icon> TRUE
@@ -13,7 +19,13 @@
     </el-form-item>
 
     <!-- 数字类型 -->
-    <el-form-item v-else-if="getActualType() === 'number'" :label="fieldConfig.description || fieldConfig.name">
+    <el-form-item v-else-if="getActualType() === 'number'">
+      <template #label>
+        <span class="field-label">
+          <span v-if="fieldConfig.required" class="required-star">* </span>
+          {{ fieldConfig.description || fieldConfig.name }}
+        </span>
+      </template>
       <el-input-number 
         v-model="modelValue[fieldConfig.name]" 
         :placeholder="`请输入${fieldConfig.description || fieldConfig.name}`"
@@ -22,7 +34,13 @@
     </el-form-item>
 
     <!-- 字符串类型 -->
-    <el-form-item v-else-if="getActualType() === 'string'" :label="fieldConfig.description || fieldConfig.name">
+    <el-form-item v-else-if="getActualType() === 'string'">
+      <template #label>
+        <span class="field-label">
+          <span v-if="fieldConfig.required" class="required-star">* </span>
+          {{ fieldConfig.description || fieldConfig.name }}
+        </span>
+      </template>
       <el-input 
         v-model="modelValue[fieldConfig.name]" 
         :placeholder="`请输入${fieldConfig.description || fieldConfig.name}`"
@@ -32,7 +50,10 @@
     <!-- 数组类型 - 显示每个数组项 -->
     <div v-else-if="getActualType() === 'array'" class="array-field">
       <div class="array-header">
-        <h4>{{ fieldConfig.description || fieldConfig.name }}</h4>
+        <h4>
+          <span v-if="fieldConfig.required" class="required-star">* </span>
+          {{ fieldConfig.description || fieldConfig.name }}
+        </h4>
         <el-button 
           type="primary" 
           size="small" 
@@ -76,7 +97,10 @@
     <!-- 对象类型 - 递归渲染子字段 -->
     <div v-else-if="getActualType() === 'object'" class="object-field">
       <el-divider content-position="left">
-        <h4>{{ fieldConfig.description || fieldConfig.name }}</h4>
+        <h4>
+          <span v-if="fieldConfig.required" class="required-star">* </span>
+          {{ fieldConfig.description || fieldConfig.name }}
+        </h4>
       </el-divider>
       
       <DynamicFormField
@@ -225,6 +249,18 @@ initializeField()
 </script>
 
 <style scoped>
+/* 必填字段星号 */
+.required-star {
+  color: #f56c6c;
+  font-weight: bold;
+  margin-right: 2px;
+}
+
+.field-label {
+  display: inline-flex;
+  align-items: center;
+}
+
 .array-field {
   margin: 20px 0;
 }
@@ -243,6 +279,8 @@ initializeField()
   font-size: 16px;
   color: #303133;
   font-weight: 600;
+  display: flex;
+  align-items: center;
 }
 
 .array-item {
@@ -274,5 +312,7 @@ initializeField()
   font-size: 15px;
   color: #606266;
   font-weight: 600;
+  display: flex;
+  align-items: center;
 }
 </style>

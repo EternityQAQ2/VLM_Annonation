@@ -116,7 +116,7 @@ class AnnotationService:
     def get_annotation_summary(self, image_name):
         """
         获取标注摘要信息
-        提取关键字段：图片路径、overall_status、defect_categories
+        动态提取所有顶级字段，统一处理数组展示
         
         Args:
             image_name: 图片文件名
@@ -127,30 +127,65 @@ class AnnotationService:
         try:
             annotation = self.get_annotation(image_name)
             
-            # 提取摘要信息
+            # 基础摘要信息
             summary = {
                 "image_path": annotation.get("image_path", f"images/{image_name}"),
-                "overall_status": None,
-                "defects": []
+                "fields": {}  # 存储所有顶级字段
             }
             
-            # 查找 overall_status（可能在不同层级）
-            if "overall_status" in annotation:
-                summary["overall_status"] = annotation["overall_status"]
+            # 获取配置的字段列表
+            json_fields = self.config.get('json_fields', [])
+            field_names = {field['name'] for field in json_fields}
             
-            # 查找 defect_categories
-            defect_categories = annotation.get("defect_categories", [])
+            # 遍历所有顶级字段（排除内部字段）
+            exclude_fields = {'image_name', 'image_path', 'created_at', 'updated_at'}
             
-            # 提取每个缺陷类别的简要信息
-            for category in defect_categories:
-                if isinstance(category, dict):
-                    defect_info = {
-                        "number": category.get("number"),
-                        "category": category.get("category"),
-                        "compliance": category.get("compliance"),
-                        "result": category.get("result", "")
-                    }
-                    summary["defects"].append(defect_info)
+            for key, value in annotation.items():
+                if key not in exclude_fields and key in field_names:
+                    # 获取字段配置
+                    field_config = next((f for f in json_fields if f['name'] == key), None)
+                    
+                    # 获取描述，如果为空则使用字段名
+                    description = key  # 默认使用字段名
+                    if field_config:
+                        config_desc = field_config.get('description', '')
+                        if config_desc and config_desc.strip():  # 确保不是空字符串
+                            description = config_desc
+                    
+                    field_type = field_config['type'] if field_config else type(value).__name__
+                    
+                    # 统一处理数组类型 - 提取详细信息
+                    if field_type == 'array' and isinstance(value, list):
+                        # 提取数组项的详细信息
+                        array_items = []
+                        for idx, item in enumerate(value):
+                            if isinstance(item, dict):
+                                # 字典项：提取所有键值对
+                                array_items.append({
+                                    "index": idx + 1,
+                                    "data": item
+                                })
+                            else:
+                                # 基本类型项：直接存储
+                                array_items.append({
+                                    "index": idx + 1,
+                                    "data": item
+                                })
+                        
+                        summary["fields"][key] = {
+                            "value": value,
+                            "type": field_type,
+                            "description": description,
+                            "array_items": array_items,  # 新增：数组详细信息
+                            "children_config": field_config.get('children', []) if field_config else []  # 子字段配置
+                        }
+                    else:
+                        # 非数组类型：保持原样
+                        summary["fields"][key] = {
+                            "value": value,
+                            "type": field_type,
+                            "description": description
+                        }
             
             return summary
             
@@ -158,6 +193,5 @@ class AnnotationService:
             print(f"[错误] 获取标注摘要失败 {image_name}: {e}")
             return {
                 "image_path": f"images/{image_name}",
-                "overall_status": None,
-                "defects": []
+                "fields": {}
             }
